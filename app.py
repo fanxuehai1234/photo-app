@@ -1,197 +1,169 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
+import time
 
 # ================= 1. 全局配置 =================
 st.set_page_config(
     page_title="一叶摇风 | 影像私教", 
     page_icon="🍃", 
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed" # 登录前收起侧边栏，更沉浸
 )
 
-# 读取 Key
-try:
-    api_key = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=api_key)
-except:
-    st.error("⚠️ 请在 Streamlit 后台 Secrets 配置 GOOGLE_API_KEY")
-    st.stop()
+# ================= 2. 登录验证系统 (海报版) =================
+def check_login():
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+        st.session_state.user_phone = None
 
-# ================= 2. 核心提示词 (数值增强版) =================
+    if st.session_state.logged_in:
+        return True
 
-# --- 日常模式：温暖点评 + 手机修图表 ---
-PROMPT_DAILY = """
-你是一位温暖、有品位的摄影博主“一叶摇风”。
-用户上传了一张生活照片。请避免笼统的废话，给出有温度的点评和具体的修图数值。
+    # --- 登录页排版：左图右文 ---
+    # 定义两列，左边宽一点放图，右边放登录框
+    col_poster, col_login = st.columns([1.2, 1])
+    
+    with col_poster:
+        # 这里使用了一张 Unsplash 的专业摄影题材高清图 (无需您上传)
+        st.image("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=1000&auto=format&fit=crop", 
+                 caption="Capture the moment. Analyze the soul.", 
+                 use_container_width=True)
 
-请严格按照以下 Markdown 格式输出：
+    with col_login:
+        st.markdown("<br>", unsafe_allow_html=True) # 顶部留白
+        st.title("🍃 一叶摇风影像")
+        st.markdown("##### 专业的 AI 摄影私教与后期顾问")
+        st.caption("会员制服务 | 手机号实名登录")
+        
+        st.divider()
+        
+        # === 登录卡片 ===
+        with st.container(border=True):
+            phone_input = st.text_input("📱 手机号码", placeholder="请输入您的手机号", max_chars=11)
+            code_input = st.text_input("🔑 会员激活码", placeholder="请输入购买的 Key", type="password")
+            
+            if st.button("立即登录 / Login", type="primary", use_container_width=True):
+                # 校验手机号
+                if len(phone_input) != 11 or not phone_input.isdigit():
+                    st.error("请填写正确的 11 位手机号码")
+                    return False
+                
+                # 校验激活码
+                try:
+                    valid_keys = st.secrets["VALID_KEYS"]
+                except:
+                    st.error("系统配置错误，请联系管理员")
+                    return False
 
-# 🌟 综合评分: {分数}/10
+                if code_input in valid_keys:
+                    st.session_state.logged_in = True
+                    st.session_state.user_phone = phone_input
+                    # 关键：记录日志，方便您在后台查岗
+                    print(f"✅ LOGIN SUCCESS: Phone [{phone_input}] used Key [{code_input}]")
+                    st.success("验证通过，正在进入工作室...")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    # 记录失败日志
+                    print(f"❌ LOGIN FAILED: Phone [{phone_input}] tried Key [{code_input}]")
+                    st.error("激活码错误或已失效")
+                    return False
 
-### 📝 影像笔记
-> {用一段话点评照片的氛围、情感和构图，要像朋友一样真诚。}
+        # === 安装教程 (折叠) ===
+        with st.expander("📲 必读：如何安装到手机桌面？"):
+            st.markdown("""
+            **🍎 iPhone 用户:** 用 Safari 打开 -> 点击底部[分享] -> 选择 [添加到主屏幕]。
+            
+            **🤖 安卓 用户:** 用 Chrome/Edge 打开 -> 点击右上角菜单 -> [添加到主屏幕] 或 [安装应用]。
+            """)
+            
+        st.caption("遇见光影，预见更好的自己。")
+    
+    return False
 
-### 🎨 手机修图参数表 (直接抄作业)
-请根据照片情况，给出一组适合 **醒图/美图秀秀/iPhone自带编辑** 的调整数值（估算值）。
-请使用 Markdown 表格展示，格式如下：
+# ================= 3. 主程序逻辑 (保持完美版) =================
+def main_app():
+    # 读取 Key
+    try:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+        genai.configure(api_key=api_key)
+    except:
+        st.error("API Key 缺失")
+        st.stop()
 
-| 参数项 | 调整数值 | 调整目的 |
-| :--- | :--- | :--- |
-| **曝光/亮度** | 例如 +10 | 提亮整体 |
-| **对比度** | 例如 -5 | 柔和画面 |
-| **饱和度** | 例如 +8 | 增加气色 |
-| **色温** | 例如 +15 | 增加暖调氛围 |
-| **高光** | 例如 -20 | 找回天空细节 |
-| **阴影** | 例如 +10 | 提亮暗部 |
-| **锐化** | 例如 +5 | 增加清晰度 |
+    PROMPT_DAILY = """
+    你是一位亲切的摄影博主“一叶摇风”。
+    请输出 Markdown：
+    # 🌟 综合评分: {分数}/10
+    ### 📝 影像笔记
+    ### 🎨 手机修图参数表 (表格形式)
+    ### 📸 拍摄建议
+    ---
+    **🍃 一叶摇风寄语:** {金句}
+    """
+    
+    PROMPT_PRO = """
+    你是一位视觉艺术总监“一叶摇风”。
+    请输出 Markdown：
+    # 🏆 艺术总评: {分数}/10
+    ### 👁️ 视觉解析
+    ### 🎨 商业后期面板 (LR参数表格)
+    ### 🎓 进阶指导
+    ---
+    **🍃 一叶摇风寄语:** {哲理}
+    """
 
-### 📸 随手拍建议
-* **构图优化:** (下次怎么拍更好？)
-* **光线运用:** (什么光线下拍更美？)
-
----
-**🍃 一叶摇风寄语:** {一句简短的、治愈的摄影金句}
-"""
-
-# --- 专业模式：深度解析 + LR专业参数 ---
-PROMPT_PRO = """
-你是一位极具审美高度的视觉艺术总监“一叶摇风”。
-用户上传了一张摄影作品。请不要手下留情，进行商业级的深度拆解，并提供精确的后期参数。
-
-请严格按照以下 Markdown 格式输出：
-
-# 🏆 艺术总评: {分数}/10
-
-### 👁️ 视觉与美学解析
-* **构图语言:** (分析透视、线条、平衡)
-* **光影质感:** (分析光比、影调风格)
-* **色彩情绪:** (分析配色逻辑、色彩心理)
-
-### 🎨 商业级后期面板 (Lightroom / C1)
-请根据照片问题，提供专业的调色参数。请使用 Markdown 表格展示：
-
-**1. 基础影调 (Tone)**
-| 参数 | 数值建议 | 解析 |
-| :--- | :--- | :--- |
-| **曝光** | +/- EV | ... |
-| **高光/白色** | ... | ... |
-| **阴影/黑色** | ... | ... |
-| **曲线 (Curve)** | 描述曲线形态 (如: S型/提黑/压高光) | ... |
-
-**2. 色彩分级 (Color)**
-| 参数 | 数值建议 | 解析 |
-| :--- | :--- | :--- |
-| **色温/色调** | K值 / 偏移 | ... |
-| **HSL-红色** | 色相/饱和/明度 | 控制肤色/唇色 |
-| **HSL-橙色** | 色相/饱和/明度 | 控制肤色通透度 |
-| **HSL-蓝色** | 色相/饱和/明度 | 控制天空/环境 |
-
-**3. 质感与细节**
-| 参数 | 数值 | 解析 |
-| :--- | :--- | :--- |
-| **清晰度/纹理** | ... | ... |
-| **颗粒 (Grain)** | ... | 增加胶片感 |
-
-### 🎓 极客进阶
-* **前期优化:** (焦段选择、布光方案、模特引导)
-
----
-**🍃 一叶摇风寄语:** {一句关于摄影本质的深刻见解}
-"""
-
-# ================= 3. 主程序逻辑 =================
-def main():
-    # --- 侧边栏 ---
     with st.sidebar:
-        st.title("🍃 引擎设置")
+        st.title("🍃 用户中心")
+        st.info(f"当前用户: {st.session_state.user_phone}")
+        if st.button("退出登录"):
+            st.session_state.logged_in = False
+            st.rerun()
+        st.divider()
         
-        mode = st.radio(
-            "选择私教模式:", 
-            ["📷 日常快评 (Daily)", "🧐 专业艺术 (Professional)"],
-            captions=[
-                "Gemini 2.0 Flash Lite | 手机修图表，简单直接", 
-                "Gemini 2.5 Flash | LR/C1 深度参数，商业级"
-            ]
-        )
+        mode = st.radio("模式选择:", ["📷 日常快评", "🧐 专业艺术"], captions=["2.0 Flash Lite", "2.5 Flash"])
         
-        if "Daily" in mode:
+        if "日常" in mode:
             real_model = "gemini-2.0-flash-lite-preview-02-05"
             active_prompt = PROMPT_DAILY
-            btn_label = "🚀 获取手机修图参数"
+            btn_label = "🚀 获取手机参数"
         else:
             real_model = "gemini-2.5-flash"
             active_prompt = PROMPT_PRO
-            btn_label = "💎 获取专业调色面板"
-            
-        st.divider()
-        st.info("💡 提示：电脑浏览器如果无法调用相机，请检查浏览器地址栏右侧是否允许了摄像头权限。")
+            btn_label = "💎 获取专业面板"
 
-    # --- 主界面 ---
     st.title("🍃 一叶摇风 | 影像私教")
     
-    # 动态副标题
-    if "Daily" in mode:
-        st.caption("当前模式：日常记录 | 核心：提供【醒图/美图秀秀】具体参数")
-    else:
-        st.caption("当前模式：专业艺术 | 核心：提供【Lightroom】HSL及曲线参数")
+    col1, col2 = st.columns(2)
+    img_file = None
+    with col1:
+        f = st.file_uploader("上传照片", type=["jpg","png","webp"], key="up")
+        if f: img_file = f
+    with col2:
+        c = st.camera_input("拍摄", key="cam")
+        if c: img_file = c
 
-    # === 核心修复：图片输入逻辑优化 ===
-    # 不再使用 tab 分隔逻辑，而是平铺或者自动检测，避免变量冲突
-    # 为了界面美观，我们用 Expander 或者并排布局
-    
-    col_input1, col_input2 = st.columns(2)
-    
-    img_file_buffer = None
-    
-    with col_input1:
-        st.markdown("### 📂 方式一：上传文件")
-        uploaded_file = st.file_uploader("支持 JPG/PNG/WEBP", type=["jpg", "jpeg", "png", "webp"], key="uploader")
-    
-    with col_input2:
-        st.markdown("### 📷 方式二：拍摄")
-        camera_file = st.camera_input("点击拍摄", key="camera")
-
-    # 优先使用相机，其次使用上传
-    if camera_file is not None:
-        img_file_buffer = camera_file
-    elif uploaded_file is not None:
-        img_file_buffer = uploaded_file
-
-    # --- 分析与展示 ---
-    if img_file_buffer is not None:
+    if img_file:
         st.divider()
         try:
-            # 修复图片加载问题：强制转换为 RGB，防止某些 PNG 格式报错
-            image = Image.open(img_file_buffer).convert('RGB')
-            
-            col_img, col_text = st.columns([1, 1.3])
-            
-            with col_img:
-                st.image(image, caption="待分析影像", use_container_width=True)
-            
-            with col_text:
-                st.subheader("💡 您的需求")
-                user_input = st.text_input("想怎么修？(可选)", placeholder="例如：照片太灰了，想通透一点；或者想修出日杂感。")
-                
+            image = Image.open(img_file).convert('RGB')
+            c_img, c_txt = st.columns([1, 1.2])
+            with c_img: st.image(image, use_container_width=True)
+            with c_txt:
+                user_req = st.text_input("备注 (可选):")
                 if st.button(btn_label, type="primary", use_container_width=True):
-                    status_text = "✨ 正在计算参数..." if "Daily" in mode else "🧠 正在拆解光影..."
-                    
-                    with st.status(status_text, expanded=True) as status:
-                        genai.configure(api_key=api_key)
+                    with st.status("🧠 分析中...", expanded=True) as s:
+                        print(f"ACTION: Phone [{st.session_state.user_phone}] processed image.")
                         model = genai.GenerativeModel(real_model, system_instruction=active_prompt)
-                        
-                        req = "请分析这张图片。"
-                        if user_input: req += f" 用户备注：{user_input}"
-                        
-                        response = model.generate_content([req, image])
-                        status.update(label="✅ 方案已生成", state="complete", expanded=False)
-                    
-                    st.markdown(response.text)
-                    
+                        msg = "分析此图。"
+                        if user_req: msg += f" 备注：{user_req}"
+                        res = model.generate_content([msg, image])
+                        s.update(label="✅ 完成", state="complete", expanded=False)
+                    st.markdown(res.text)
         except Exception as e:
-            st.error(f"图片加载或分析出错: {e}")
-            st.warning("如果使用电脑摄像头失败，请检查浏览器权限设置，或尝试使用手机访问。")
+            st.error(f"Error: {e}")
 
 if __name__ == "__main__":
-    main()
+    if check_login():
+        main_app()
