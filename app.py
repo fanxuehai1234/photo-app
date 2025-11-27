@@ -4,10 +4,9 @@ from PIL import Image, ExifTags
 import time
 from datetime import datetime
 import warnings
-import random  # 👈 新增：用于随机抽签
+import random
 
-# ================= 0. 核心配置 (已修复报错) =================
-# 屏蔽警告信息
+# ================= 0. 核心配置 =================
 warnings.filterwarnings("ignore")
 
 st.set_page_config(
@@ -17,7 +16,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 隐藏无关元素 + 动态CSS
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -27,7 +25,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 1. 智能 Key 管理系统 (多Key版) =================
+# ================= 1. 智能 Key 管理系统 =================
 def configure_random_key():
     try:
         # 尝试读取 Key 列表
@@ -43,8 +41,8 @@ def configure_random_key():
         # 配置 Google
         genai.configure(api_key=current_key)
         return True
-    exceptException as e:
-        st.error("⚠️ 后台 Secrets 配置错误：未找到 'API_KEYS' 列表。")
+    except Exception as e:  # 👈 修复了这里！加了空格
+        st.error(f"⚠️ 后台 Secrets 配置错误：{e}")
         return False
 
 # ================= 2. 登录验证系统 =================
@@ -135,7 +133,7 @@ def get_exif_data(image):
 
 # ================= 4. 主程序 =================
 def main_app():
-    # 初始化 Key (每次刷新页面都会重新随机选一个 Key)
+    # 初始化 Key
     if not configure_random_key():
         st.stop()
 
@@ -182,7 +180,6 @@ def main_app():
             index=0
         )
         
-        # 个性化设置
         with st.expander("🛠️ 个性化设置", expanded=False):
             font_size = st.slider("Aa 字体大小", 14, 24, 16)
             dark_mode = st.toggle("🌙 沉浸深色模式")
@@ -208,7 +205,7 @@ def main_app():
             st.session_state.logged_in = False
             st.rerun()
 
-    # --- 后台模型路由 ---
+    # --- 路由 ---
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
         active_prompt = PROMPT_DAILY
@@ -234,11 +231,11 @@ def main_app():
     with tab1:
         f = st.file_uploader("支持 JPG/PNG/WEBP", type=["jpg","png","webp"], key="up_file")
         if f: img_file = f
-            
     with tab2:
         c = st.camera_input("点击拍摄", key="cam_file")
         if c: img_file = c
 
+    # --- 分析 ---
     if img_file:
         st.divider()
         try:
@@ -260,8 +257,6 @@ def main_app():
                     with st.status(status_msg, expanded=True) as s:
                         print(f"ACTION: User [{st.session_state.user_phone}] - Mode [{mode_select}]")
                         
-                        # --- 核心：随机Key已在 main_app 开头配置好 ---
-                        # 直接调用即可
                         model = genai.GenerativeModel(real_model, system_instruction=active_prompt)
                         msg = "分析此图。"
                         if user_req: msg += f" 备注：{user_req}"
@@ -280,14 +275,13 @@ def main_app():
                     
         except Exception as e:
             st.error("分析中断")
-            # 智能错误提示
             err = str(e)
             if "429" in err:
-                st.warning("⚠️ 当前线路繁忙 (429)，请点击按钮重试，系统将自动切换线路。")
+                st.warning("⚠️ 额度已满或繁忙，请点击按钮重试 (系统会自动切换 Key)")
             elif "404" in err:
-                st.warning("⚠️ 模型暂时不可用，请切换“日常/专业”模式试试。")
+                st.warning("⚠️ 模型暂不可用，请切换模式")
             else:
-                st.warning(f"错误信息: {err}")
+                st.warning(f"错误: {err}")
 
 if __name__ == "__main__":
     if check_login():
