@@ -1,88 +1,91 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
+import io
 
-# 1. 页面设置
-st.set_page_config(page_title="BayernGomez 修图大师", page_icon="🎨")
+# 页面配置
+st.set_page_config(page_title="BayernGomez 修图 V3", page_icon="🎨", layout="wide")
 
-# 2. 读取 Key
+# 读取 Key
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
+    genai.configure(api_key=api_key)
 except:
-    st.error("⚠️ 错误：请在 Streamlit 后台配置 GOOGLE_API_KEY。")
+    st.error("⚠️ 未配置 API Key！")
     st.stop()
 
-# 3. 核心提示词 (诚实版 - 禁止画大饼)
-SYSTEM_PROMPT = """
-你是一位专业的修图顾问 BayernGomez。
-你的任务是：看图，然后给出专业的修图建议（参数、思路）。
-
-⚠️ 重要原则 (必须遵守)：
-1. 你是一个“文本分析AI”，你没有“手”，无法直接修改图片文件。
-2. 严禁说“我开始为您修图”、“请稍候查看结果”之类的话，因为你做不到。
-3. 如果用户要求“换衣服”、“换背景”等生成类操作，请明确告知用户：“我无法直接生成图片，但我建议您使用 PS 或美图秀秀，按照以下思路进行处理...”
-
-请从构图、光影、色彩情感等方面分析，并给出具体的 Lightroom/Photoshop 参数建议。
-"""
-
 def main():
-    with st.sidebar:
-        st.success("✅ 云端大脑已连接")
-        st.info("无需翻墙 · 国内直连可用")
-        
-        # === 关键修改：使用您账号里真实存在的模型 ===
-        model_label = st.selectbox("选择大脑", [
-            "Gemini 2.0 Flash Lite (极速·高额度)", 
-            "Gemini 2.0 Pro (超强·画质好)",
-            "Gemini 2.5 Flash (神秘新版)"
-        ])
-        
-        # === 映射到您截图里的真实代码 ===
-        if "Lite" in model_label:
-            # 这是您截图里有的模型，速度最快，额度通常最高
-            real_model_name = "gemini-2.0-flash-lite-preview-02-05"
-        elif "Pro" in model_label:
-            # 2.0 Pro 版本
-            real_model_name = "gemini-2.0-pro-exp-02-05"
-        else:
-            # 您截图里的 2.5 版本
-            real_model_name = "gemini-2.5-flash"
-        
-        st.caption(f"当前调用内核: `{real_model_name}`")
+    # 标题带 V3，证明更新成功
+    st.title("🎨 BayernGomez 智能修图大师 V3 (尝试出图版)")
+    
+    col1, col2 = st.columns(2)
 
-    st.title("🎨 BayernGomez 智能修图大师")
-    st.write("已启用 Google 最新一代 2.0/2.5 模型！")
+    with col1:
+        st.subheader("1. 上传与需求")
+        uploaded_file = st.file_uploader("上传照片...", type=["jpg", "png"])
+        user_req = st.text_input("请输入需求 (例如：换成牛仔裤)")
+        
+        # 强制使用 Imagen 模型
+        start_btn = st.button("🚀 开始生成效果图", type="primary")
 
-    uploaded_file = st.file_uploader("点击上传照片...", type=["jpg", "jpeg", "png"])
-
-    if uploaded_file:
-        try:
-            image = Image.open(uploaded_file)
-            st.image(image, caption='预览', use_container_width=True)
+    if uploaded_file and start_btn:
+        image = Image.open(uploaded_file)
+        with col1:
+            st.image(image, caption="原图", use_container_width=True)
+        
+        with col2:
+            st.subheader("2. 处理结果")
             
-            user_req = st.text_input("有什么特殊需求？(例如：日系小清新)")
-
-            if st.button("🚀 开始智能分析", key="run_btn"):
-                try:
-                    with st.spinner(f'🤖 {model_label} 正在思考中...'):
-                        genai.configure(api_key=api_key)
-                        model = genai.GenerativeModel(model_name=real_model_name, system_instruction=SYSTEM_PROMPT)
-                        
-                        prompt = "请分析这张图片。"
-                        if user_req: prompt += f" 用户需求：{user_req}"
-                        
-                        response = model.generate_content([prompt, image])
-                        st.success("✅ 分析完成！")
-                        st.markdown(response.text)
-                except Exception as e:
-                    st.error("❌ 调用失败")
-                    st.warning(f"错误信息：{e}")
-                    if "404" in str(e):
-                        st.info("提示：如果报404，请在左侧切换另一个模型试试。")
-                    elif "429" in str(e):
-                        st.info("提示：当前模型额度已满，请切换到 'Flash Lite' 试试。")
-        except Exception as img_err:
-            st.error(f"图片读取失败: {img_err}")
+            # 1. 先用 Gemini 分析图片内容
+            status = st.status("正在分析原图内容...", expanded=True)
+            try:
+                vision_model = genai.GenerativeModel('gemini-1.5-flash')
+                description = vision_model.generate_content(["请详细描述这张图片的主体、姿势、环境，50字以内。", image]).text
+                status.write(f"原图识别：{description}")
+                
+                # 2. 尝试调用 Imagen 3 画图
+                status.update(label="正在尝试生成新图片 (Imagen 3)...", state="running")
+                
+                # 构造绘画提示词
+                prompt = f"High quality photo. {description}. Modifiction: {user_req}. Photorealistic, 8k."
+                
+                # === 关键：调用生图模型 ===
+                # 注意：如果您的 Key 没权限，这里会直接报错
+                painter = genai.ImageGenerationModel("imagen-3.0-generate-001")
+                
+                result = painter.generate_images(
+                    prompt=prompt,
+                    number_of_images=1,
+                    aspect_ratio="3:4",
+                    safety_filter="block_only_high"
+                )
+                
+                # 显示图片
+                status.update(label="✅ 生成成功！", state="complete")
+                
+                for img in result.images:
+                    img_pil = Image.open(io.BytesIO(img._image_bytes))
+                    st.image(img_pil, caption=f"AI 生成的效果图 (根据：{user_req})", use_container_width=True)
+                    
+            except Exception as e:
+                status.update(label="❌ 生成失败", state="error")
+                st.error("无法生成图片，原因如下：")
+                
+                error_msg = str(e)
+                if "404" in error_msg or "Not Found" in error_msg:
+                    st.warning("核心原因：您的免费 API Key 没有权限调用谷歌的 'Imagen 3' 画图模型。")
+                    st.info("解释：Google AI Studio 的画图功能目前仅对部分账号开放，或者只在网页版沙盒里可用，API 还没完全开放给免费用户。")
+                elif "403" in error_msg:
+                     st.warning("核心原因：权限被拒绝 (403)。您的账号所在地区或类型不支持生图。")
+                else:
+                    st.code(error_msg)
+                
+                st.write("---")
+                st.caption("虽然无法出图，但 Gemini 依然可以提供修图建议：")
+                # 兜底：如果画不出图，至少给个建议
+                advice_model = genai.GenerativeModel('gemini-1.5-flash')
+                advice = advice_model.generate_content([f"用户想把这张图：{user_req}，请给出PS修图步骤。", image]).text
+                st.markdown(advice)
 
 if __name__ == "__main__":
     main()
