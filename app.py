@@ -18,64 +18,89 @@ except:
     st.error("⚠️ 请在 Streamlit 后台 Secrets 配置 GOOGLE_API_KEY")
     st.stop()
 
-# ================= 2. 定义双重人设 (提示词升级) =================
+# ================= 2. 核心提示词 (数值增强版) =================
 
-# --- 日常模式：通俗易懂 + 具体数值 ---
+# --- 日常模式：温暖点评 + 手机修图表 ---
 PROMPT_DAILY = """
-你是一位亲切但专业的摄影师“一叶摇风”。
-用户上传了一张日常照片。请不要只说空话，要给出能直接操作的“作业”。
+你是一位温暖、有品位的摄影博主“一叶摇风”。
+用户上传了一张生活照片。请避免笼统的废话，给出有温度的点评和具体的修图数值。
 
-请严格按照以下 Markdown 结构输出（不要包含其他废话）：
+请严格按照以下 Markdown 格式输出：
 
 # 🌟 综合评分: {分数}/10
 
-### 📝 影像快评
-> 用简练、温暖的语言点评这张照片的氛围和构图优缺点。
+### 📝 影像笔记
+> {用一段话点评照片的氛围、情感和构图，要像朋友一样真诚。}
 
-### 🎨 手机修图作业 (可以直接抄)
-*请给出具体的手机相册/醒图调整数值（估算值）：*
-* **曝光/亮度:** (例如：+10)
-* **对比度:** (例如：-5，让画面柔和)
-* **饱和度:** (例如：+5，增加鲜艳度)
-* **色温/暖色:** (例如：往右拉一点，变暖)
-* **高光/阴影:** (例如：高光-20，阴影+15)
+### 🎨 手机修图参数表 (直接抄作业)
+请根据照片情况，给出一组适合 **醒图/美图秀秀/iPhone自带编辑** 的调整数值（估算值）。
+请使用 Markdown 表格展示，格式如下：
 
-### 📸 拍摄小贴士
-* 如果下次再拍这种场景，怎么拍更好看？(比如：手机放低一点、利用窗户光等)
+| 参数项 | 调整数值 | 调整目的 |
+| :--- | :--- | :--- |
+| **曝光/亮度** | 例如 +10 | 提亮整体 |
+| **对比度** | 例如 -5 | 柔和画面 |
+| **饱和度** | 例如 +8 | 增加气色 |
+| **色温** | 例如 +15 | 增加暖调氛围 |
+| **高光** | 例如 -20 | 找回天空细节 |
+| **阴影** | 例如 +10 | 提亮暗部 |
+| **锐化** | 例如 +5 | 增加清晰度 |
+
+### 📸 随手拍建议
+* **构图优化:** (下次怎么拍更好？)
+* **光线运用:** (什么光线下拍更美？)
 
 ---
-**🍃 一叶摇风寄语:** {给摄影师一句简短的、富有诗意或哲理的鼓励}
+**🍃 一叶摇风寄语:** {一句简短的、治愈的摄影金句}
 """
 
-# --- 专业模式：深度解析 + 影调美学 ---
+# --- 专业模式：深度解析 + LR专业参数 ---
 PROMPT_PRO = """
-你是一位极其严格的视觉艺术总监“一叶摇风”。
-用户上传了一张摄影作品，请进行商业级/艺术级的深度拆解。
+你是一位极具审美高度的视觉艺术总监“一叶摇风”。
+用户上传了一张摄影作品。请不要手下留情，进行商业级的深度拆解，并提供精确的后期参数。
 
-请严格按照以下 Markdown 结构输出（评分必须在第一行）：
+请严格按照以下 Markdown 格式输出：
 
-# 🏆 艺术综评: {分数}/10
+# 🏆 艺术总评: {分数}/10
 
-### 👁️ 深度视觉解析
-* **构图语言:** (分析视觉引导线、透视关系、负空间运用)
-* **光影质感:** (分析光质软硬、光比控制、影调风格如Low-key/High-key)
-* **色彩情绪:** (分析配色方案、色彩心理学影响)
+### 👁️ 视觉与美学解析
+* **构图语言:** (分析透视、线条、平衡)
+* **光影质感:** (分析光比、影调风格)
+* **色彩情绪:** (分析配色逻辑、色彩心理)
 
-### 🎨 商业级修图方案 (Lightroom/Capture One)
-*请给出专业的调色思路和参数方向：*
-* **曲线/色阶:** (例如：S型曲线增强对比，提升暗部灰度...)
-* **HSL/混色:** (例如：红色明度+10，橙色饱和度-5，统一肤色...)
-* **质感与细节:** (例如：清晰度+15，添加噪点颗粒...)
-* **局部处理:** (例如：使用径向渐变压暗四周，突出主体...)
+### 🎨 商业级后期面板 (Lightroom / C1)
+请根据照片问题，提供专业的调色参数。请使用 Markdown 表格展示：
 
-### 🎓 大师进阶课
-* 前期拍摄时还可以如何极致优化？(焦段、布光、情绪引导)
+**1. 基础影调 (Tone)**
+| 参数 | 数值建议 | 解析 |
+| :--- | :--- | :--- |
+| **曝光** | +/- EV | ... |
+| **高光/白色** | ... | ... |
+| **阴影/黑色** | ... | ... |
+| **曲线 (Curve)** | 描述曲线形态 (如: S型/提黑/压高光) | ... |
+
+**2. 色彩分级 (Color)**
+| 参数 | 数值建议 | 解析 |
+| :--- | :--- | :--- |
+| **色温/色调** | K值 / 偏移 | ... |
+| **HSL-红色** | 色相/饱和/明度 | 控制肤色/唇色 |
+| **HSL-橙色** | 色相/饱和/明度 | 控制肤色通透度 |
+| **HSL-蓝色** | 色相/饱和/明度 | 控制天空/环境 |
+
+**3. 质感与细节**
+| 参数 | 数值 | 解析 |
+| :--- | :--- | :--- |
+| **清晰度/纹理** | ... | ... |
+| **颗粒 (Grain)** | ... | 增加胶片感 |
+
+### 🎓 极客进阶
+* **前期优化:** (焦段选择、布光方案、模特引导)
 
 ---
-**🍃 一叶摇风寄语:** {给摄影师一句深刻的、关于摄影艺术的见解}
+**🍃 一叶摇风寄语:** {一句关于摄影本质的深刻见解}
 """
 
-# ================= 3. 主程序 =================
+# ================= 3. 主程序逻辑 =================
 def main():
     # --- 侧边栏 ---
     with st.sidebar:
@@ -85,86 +110,84 @@ def main():
             "选择私教模式:", 
             ["📷 日常快评 (Daily)", "🧐 专业艺术 (Professional)"],
             captions=[
-                "Gemini 2.0 Flash Lite | 手机修图参数，通俗易懂", 
-                "Gemini 2.5 Flash | 商业级分析，深度美学"
+                "Gemini 2.0 Flash Lite | 手机修图表，简单直接", 
+                "Gemini 2.5 Flash | LR/C1 深度参数，商业级"
             ]
         )
         
-        # 逻辑映射
         if "Daily" in mode:
             real_model = "gemini-2.0-flash-lite-preview-02-05"
             active_prompt = PROMPT_DAILY
-            btn_label = "🚀 获取修图作业 (数值版)"
+            btn_label = "🚀 获取手机修图参数"
         else:
             real_model = "gemini-2.5-flash"
             active_prompt = PROMPT_PRO
-            btn_label = "💎 开始深度解析"
+            btn_label = "💎 获取专业调色面板"
             
         st.divider()
-        st.info("💡 提示：日常模式现在也会提供具体的修图数值建议。")
+        st.info("💡 提示：电脑浏览器如果无法调用相机，请检查浏览器地址栏右侧是否允许了摄像头权限。")
 
     # --- 主界面 ---
     st.title("🍃 一叶摇风 | 影像私教")
     
-    # 顶部状态
+    # 动态副标题
     if "Daily" in mode:
-        st.caption("当前模式：日常记录 | 重点：给出具体的手机修图数值")
+        st.caption("当前模式：日常记录 | 核心：提供【醒图/美图秀秀】具体参数")
     else:
-        st.caption("当前模式：专业艺术 | 重点：深度影调分析与商业修图思路")
+        st.caption("当前模式：专业艺术 | 核心：提供【Lightroom】HSL及曲线参数")
 
-    tab1, tab2 = st.tabs(["📂 上传文件", "📷 现场拍摄"])
-    image_data = None
+    # === 核心修复：图片输入逻辑优化 ===
+    # 不再使用 tab 分隔逻辑，而是平铺或者自动检测，避免变量冲突
+    # 为了界面美观，我们用 Expander 或者并排布局
+    
+    col_input1, col_input2 = st.columns(2)
+    
+    img_file_buffer = None
+    
+    with col_input1:
+        st.markdown("### 📂 方式一：上传文件")
+        uploaded_file = st.file_uploader("支持 JPG/PNG/WEBP", type=["jpg", "jpeg", "png", "webp"], key="uploader")
+    
+    with col_input2:
+        st.markdown("### 📷 方式二：拍摄")
+        camera_file = st.camera_input("点击拍摄", key="camera")
 
-    with tab1:
-        uploaded_file = st.file_uploader(" ", type=["jpg", "jpeg", "png", "webp"])
-        if uploaded_file:
-            image_data = Image.open(uploaded_file)
-
-    with tab2:
-        camera_file = st.camera_input("点击拍摄")
-        if camera_file:
-            image_data = Image.open(camera_file)
+    # 优先使用相机，其次使用上传
+    if camera_file is not None:
+        img_file_buffer = camera_file
+    elif uploaded_file is not None:
+        img_file_buffer = uploaded_file
 
     # --- 分析与展示 ---
-    if image_data:
+    if img_file_buffer is not None:
         st.divider()
-        col1, col2 = st.columns([1, 1.3]) # 右侧稍微宽一点，放文字
-        
-        with col1:
-            st.image(image_data, caption="原始影像", use_container_width=True)
-        
-        with col2:
-            # 这里的 subheader 去掉了，直接显示结果，因为评分在结果的第一行
+        try:
+            # 修复图片加载问题：强制转换为 RGB，防止某些 PNG 格式报错
+            image = Image.open(img_file_buffer).convert('RGB')
             
-            user_input = st.text_input("向导师提问 (可选):", placeholder="例如：我想修出胶片感...")
+            col_img, col_text = st.columns([1, 1.3])
             
-            if st.button(btn_label, type="primary", use_container_width=True):
-                try:
-                    status_text = "✨ 正在计算修图数值..." if "Daily" in mode else "🧠 正在解构光影美学..."
+            with col_img:
+                st.image(image, caption="待分析影像", use_container_width=True)
+            
+            with col_text:
+                st.subheader("💡 您的需求")
+                user_input = st.text_input("想怎么修？(可选)", placeholder="例如：照片太灰了，想通透一点；或者想修出日杂感。")
+                
+                if st.button(btn_label, type="primary", use_container_width=True):
+                    status_text = "✨ 正在计算参数..." if "Daily" in mode else "🧠 正在拆解光影..."
                     
                     with st.status(status_text, expanded=True) as status:
-                        
                         genai.configure(api_key=api_key)
                         model = genai.GenerativeModel(real_model, system_instruction=active_prompt)
                         
                         req = "请分析这张图片。"
                         if user_input: req += f" 用户备注：{user_input}"
                         
-                        response = model.generate_content([req, image_data])
-                        
-                        status.update(label="✅ 分析完成", state="complete", expanded=False)
+                        response = model.generate_content([req, image])
+                        status.update(label="✅ 方案已生成", state="complete", expanded=False)
                     
-                    # 直接展示结果，因为我们在提示词里规定了第一行就是评分
                     st.markdown(response.text)
                     
-                except Exception as e:
-                    st.error("连接中断")
-                    if "404" in str(e):
-                        st.warning("错误：模型不可用，请尝试切换模式。")
-                    elif "429" in str(e):
-                        st.warning("提示：请求过多，请休息一分钟再试。")
-                    else:
-                        st.warning(str(e))
-
-if __name__ == "__main__":
-    main()
+        except Exception as e:
+            st.error(f"
