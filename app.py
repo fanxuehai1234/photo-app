@@ -5,13 +5,10 @@ import time
 from datetime import datetime
 import warnings
 import random
+import base64
 
 # ================= 0. 核心配置 =================
-# 当前版本号 (每次您更新代码时，手动改一下这个数字，用户就能看到了)
-APP_VERSION = "V9.0 (多线路稳定版)"
-
 warnings.filterwarnings("ignore")
-
 st.set_page_config(
     page_title="一叶摇风 | 影像私教", 
     page_icon="🍃", 
@@ -19,58 +16,111 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# --- CSS 深度美化 ---
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     .stApp {transition: background-color 0.5s ease;}
+    
+    /* 优化侧边栏文字 */
+    [data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+    }
+    
+    /* 结果卡片样式 */
+    .result-card {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        margin-top: 20px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 1. 智能 Key 管理系统 =================
+# ================= 1. 功能函数库 =================
+
+# 智能 Key 管理
 def configure_random_key():
     try:
-        # 读取 Key 列表
         keys = st.secrets["API_KEYS"]
-        
-        # 兼容处理：如果是字符串转为列表，如果是列表直接用
-        if isinstance(keys, str):
-            key_list = [keys]
-        else:
-            key_list = keys
-            
-        # 随机抽取
+        key_list = [keys] if isinstance(keys, str) else keys
         current_key = random.choice(key_list)
-        
-        # 配置 Google
         genai.configure(api_key=current_key)
         return True
     except Exception as e:
         st.error(f"⚠️ 系统配置错误：{e}")
         return False
 
-# ================= 2. 登录验证系统 =================
+# EXIF 读取
+def get_exif_data(image):
+    exif_data = {}
+    try:
+        info = image._getexif()
+        if info:
+            for tag, value in info.items():
+                decoded = ExifTags.TAGS.get(tag, tag)
+                if decoded in ['Make', 'Model', 'ISO', 'FNumber', 'ExposureTime', 'DateTimeOriginal']:
+                    exif_data[decoded] = value
+    except: pass
+    return exif_data
+
+# 生成 HTML 报告 (替代 PDF，解决中文乱码问题)
+def create_html_report(text, user_req):
+    html = f"""
+    <html>
+    <head>
+        <style>
+            body {{ font-family: 'Microsoft YaHei', sans-serif; padding: 40px; line-height: 1.6; color: #333; }}
+            .header {{ text-align: center; border-bottom: 2px solid #4CAF50; padding-bottom: 20px; margin-bottom: 30px; }}
+            .title {{ font-size: 24px; font-weight: bold; color: #2E7D32; }}
+            .meta {{ color: #666; font-size: 14px; margin-top: 10px; }}
+            .content {{ background: #f9f9f9; padding: 20px; border-radius: 8px; }}
+            h1, h2, h3 {{ color: #2E7D32; }}
+            table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #4CAF50; color: white; }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="title">🍃 一叶摇风 | 影像分析报告</div>
+            <div class="meta">生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
+            <div class="meta">用户备注: {user_req if user_req else "无"}</div>
+        </div>
+        <div class="content">
+            {text.replace(chr(10), '<br>').replace('###', '<h3>').replace('# ', '<h1>').replace('**', '<b>')}
+        </div>
+    </body>
+    </html>
+    """
+    return html
+
+# ================= 2. 登录系统 =================
 def check_login():
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
         st.session_state.user_phone = None
         st.session_state.expire_date = None
+        # 初始化历史记录和收藏
+        st.session_state.history = [] 
+        st.session_state.favorites = []
 
     if st.session_state.logged_in:
         return True
 
     col_poster, col_login = st.columns([1.2, 1])
-    
     with col_poster:
-        st.image("https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=1000&auto=format&fit=crop", 
-                 use_container_width=True)
+        st.image("https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=1000&auto=format&fit=crop", use_container_width=True)
         st.caption("“摄影不仅是记录，更是表达。”")
 
     with col_login:
         st.markdown("<br>", unsafe_allow_html=True)
         st.title("🍃 一叶摇风")
-        st.markdown(f"#### 您的 24小时 AI 摄影私教 <span style='font-size:12px;color:gray'>{APP_VERSION}</span>", unsafe_allow_html=True)
+        st.markdown(f"#### 您的 24小时 AI 摄影私教 <span style='font-size:12px;color:gray'>V10.0 旗舰版</span>", unsafe_allow_html=True)
         
         with st.container(border=True):
             st.subheader("🔐 会员登录")
@@ -89,7 +139,6 @@ def check_login():
 
                 login_success = False
                 expire_date_str = ""
-                
                 for account_str in valid_accounts:
                     try:
                         parts = account_str.split(":")
@@ -118,24 +167,9 @@ def check_login():
         st.warning("💎 **获取激活码 / 续费请联系微信：BayernGomez**")
         with st.expander("📲 安装教程 (点我展开)"):
             st.markdown("iPhone: Safari分享 -> 添加到主屏幕\n\nAndroid: Chrome菜单 -> 添加到主屏幕")
-
     return False
 
-# ================= 3. 辅助功能 =================
-def get_exif_data(image):
-    exif_data = {}
-    try:
-        info = image._getexif()
-        if info:
-            for tag, value in info.items():
-                decoded = ExifTags.TAGS.get(tag, tag)
-                if decoded in ['Make', 'Model', 'DateTimeOriginal', 'ISOSpeedRatings', 'FNumber', 'ExposureTime']:
-                    exif_data[decoded] = value
-    except:
-        pass
-    return exif_data
-
-# ================= 4. 主程序 =================
+# ================= 3. 主程序 =================
 def main_app():
     if not configure_random_key():
         st.stop()
@@ -168,65 +202,78 @@ def main_app():
     **🍃 一叶摇风寄语:** {哲理}
     """
 
+    # --- 侧边栏：控制中心 (UI优化) ---
     with st.sidebar:
         st.title("🍃 用户中心")
-        st.info(f"用户: {st.session_state.user_phone}")
-        if st.session_state.expire_date:
-            st.caption(f"有效期至: {st.session_state.expire_date}")
+        st.info(f"👤 {st.session_state.user_phone}")
+        st.caption(f"📅 有效期: {st.session_state.expire_date}")
         
-        st.divider()
-        st.write("**⚙️ 模式选择**")
+        st.markdown("---")
+        st.markdown("**⚙️ 模式选择**")
         mode_select = st.radio(
             "选择分析深度:", 
-            ["📷 日常快评 (生活照)", "🧐 专业艺术 (作品集)"],
-            index=0
+            ["📷 日常快评", "🧐 专业艺术"],
+            index=0,
+            label_visibility="collapsed"
         )
-        
-        with st.expander("🛠️ 个性化设置", expanded=False):
-            font_size = st.slider("Aa 字体大小", 14, 24, 16)
-            dark_mode = st.toggle("🌙 沉浸深色模式")
-            show_exif_info = st.checkbox("📷 显示拍摄参数", value=True)
 
-        bg_color = "#1e1e1e" if dark_mode else "#ffffff"
-        text_color = "#ffffff" if dark_mode else "#000000"
-        
-        st.markdown(f"""
-        <style>
-        .stApp {{
-            background-color: {bg_color};
-            color: {text_color};
-        }}
-        .stMarkdown p, .stMarkdown li {{
-            font-size: {font_size}px !important;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
+        # --- 新增：历史记录与收藏 ---
+        st.markdown("---")
+        with st.expander("🕒 最近历史 (Last 5)", expanded=False):
+            if not st.session_state.history:
+                st.caption("暂无记录")
+            else:
+                for idx, item in enumerate(reversed(st.session_state.history)):
+                    st.text(f"{item['time']} - {item['mode']}")
+                    with st.popover(f"查看记录 #{len(st.session_state.history)-idx}"):
+                        st.markdown(item['content'])
 
-        st.divider()
-        # === 底部显示版本号 ===
-        st.caption(f"当前版本: {APP_VERSION}")
+        with st.expander("❤️ 我的收藏", expanded=False):
+            if not st.session_state.favorites:
+                st.caption("暂无收藏")
+            else:
+                for idx, item in enumerate(st.session_state.favorites):
+                    with st.popover(f"⭐ 收藏 #{idx+1} ({item['time']})"):
+                        st.markdown(item['content'])
+
+        st.markdown("---")
+        with st.expander("🛠️ 个性化设置"):
+            font_size = st.slider("字体大小", 14, 24, 16)
+            show_exif_info = st.checkbox("显示参数(EXIF)", value=True)
         
+        # 字体大小动态应用
+        st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important;}}</style>", unsafe_allow_html=True)
+
         if st.button("退出登录", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
 
+    # --- 路由配置 ---
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
         active_prompt = PROMPT_DAILY
         btn_label = "🚀 开始评估 (获取手机参数)"
         status_msg = "✨ 正在生成手机修图方案..."
+        banner_color = "rgba(76, 175, 80, 0.1)" # 绿色背景
+        banner_icon = "🍃"
     else:
         real_model = "gemini-2.5-flash"
         active_prompt = PROMPT_PRO
         btn_label = "💎 深度解析 (获取专业面板)"
         status_msg = "🧠 正在进行商业级光影分析..."
+        banner_color = "rgba(33, 150, 243, 0.1)" # 蓝色背景
+        banner_icon = "🎓"
 
+    # --- 主界面 ---
     st.title("🍃 一叶摇风 | 影像私教")
     
-    if "日常" in mode_select:
-        st.success("当前模式：**日常记录** | 适用：手机摄影、朋友圈打卡")
-    else:
-        st.info("当前模式：**专业创作** | 适用：单反/微单摄影、商业修图")
+    # 顶部美化 Banner
+    st.markdown(f"""
+    <div style="background-color: {banner_color}; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+        <h4 style="margin:0; padding:0;">{banner_icon} 当前模式：{mode_select.split(' ')[1]}</h4>
+        <small style="color: gray;">适用于：{'朋友圈、生活记录、快速出片' if '日常' in mode_select else '商业摄影、作品集、精修'}</small>
+    </div>
+    """, unsafe_allow_html=True)
 
     tab1, tab2 = st.tabs(["📂 上传照片", "📷 现场拍摄"])
     img_file = None
@@ -238,6 +285,7 @@ def main_app():
         c = st.camera_input("点击拍摄", key="cam_file")
         if c: img_file = c
 
+    # --- 分析逻辑 ---
     if img_file:
         st.divider()
         try:
@@ -249,7 +297,7 @@ def main_app():
                 if show_exif_info:
                     exif = get_exif_data(image)
                     if exif:
-                        with st.expander("📷 照片详细参数 (EXIF)"):
+                        with st.expander("📷 拍摄参数 (EXIF)"):
                             st.json(exif)
             
             with c2:
@@ -266,20 +314,44 @@ def main_app():
                         response = model.generate_content([msg, image])
                         s.update(label="✅ 分析完成", state="complete", expanded=False)
                     
-                    st.markdown(response.text)
+                    # === 结果展示卡片化 ===
+                    result_text = response.text
+                    st.markdown(f'<div class="result-card">{result_text}</div>', unsafe_allow_html=True) # 使用卡片样式
+                    st.markdown(result_text) # 渲染 Markdown
                     
-                    st.download_button(
-                        label="📥 下载分析报告",
-                        data=response.text,
-                        file_name="一叶摇风_修图建议.md",
-                        mime="text/markdown"
-                    )
+                    # === 保存历史记录 (内存中) ===
+                    timestamp = datetime.now().strftime("%H:%M")
+                    record = {"time": timestamp, "mode": mode_select, "content": result_text}
+                    st.session_state.history.append(record)
+                    # 保持只存最近5条
+                    if len(st.session_state.history) > 5:
+                        st.session_state.history.pop(0)
+
+                    # === 功能按钮区 ===
+                    btn_col1, btn_col2 = st.columns(2)
                     
+                    with btn_col1:
+                        # 下载 HTML 报告
+                        html_report = create_html_report(result_text, user_req)
+                        st.download_button(
+                            label="📥 下载精美报告 (可打印)",
+                            data=html_report,
+                            file_name=f"一叶摇风分析_{int(time.time())}.html",
+                            mime="text/html",
+                            use_container_width=True
+                        )
+                    
+                    with btn_col2:
+                        # 收藏功能
+                        if st.button("❤️ 加入收藏夹", use_container_width=True):
+                            st.session_state.favorites.append(record)
+                            st.toast("已收藏！请在侧边栏查看", icon="⭐")
+
         except Exception as e:
             st.error("分析中断")
             err = str(e)
             if "429" in err:
-                st.warning("⚠️ 额度已满，请点击按钮重试 (系统会自动切换备用线路)")
+                st.warning("⚠️ 额度已满或繁忙，请重试 (系统会自动切换 Key)")
             elif "404" in err:
                 st.warning("⚠️ 模型暂不可用，请切换模式")
             else:
