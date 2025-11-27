@@ -190,4 +190,8 @@ def main():
                     st.markdown(response.text)
                     
         except Exception as e:
-            st.error(f"
+            st.error(f"图片加载或分析出错: {e}")
+            st.warning("如果使用电脑摄像头失败，请检查浏览器权限设置，或尝试使用手机访问。")
+
+if __name__ == "__main__":
+    main()
