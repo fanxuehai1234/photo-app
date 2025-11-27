@@ -1,91 +1,132 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
-import io
 
-# 页面配置
-st.set_page_config(page_title="BayernGomez 修图 V3", page_icon="🎨", layout="wide")
+# ================= 1. 全局配置 =================
+st.set_page_config(
+    page_title="BayernGomez 影像私教", 
+    page_icon="📸", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # 读取 Key
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
 except:
-    st.error("⚠️ 未配置 API Key！")
+    st.error("⚠️ 请在 Streamlit 后台 Secrets 配置 GOOGLE_API_KEY")
     st.stop()
 
+# 定义专业的摄影导师提示词
+SYSTEM_PROMPT = """
+你是一位拥有20年经验的顶级摄影师和后期讲师 "BayernGomez"。
+用户的需求是：上传一张照片，希望得到你的专业点评、修图建议和拍摄指导。
+
+请严格按照以下 Markdown 格式输出分析报告：
+
+### 📸 综合评分: {分数}/10
+> 用一句话犀利地点评这张照片的整体感觉。
+
+### ✨ 亮点分析
+* **构图:** ...
+* **光影:** ...
+* **氛围:** ...
+
+### 🎨 后期修图指南 (Lightroom/醒图参数)
+*请给出具体的调整方向，例如：*
+* **曝光/对比度:** (例如：建议降低高光 -20，提亮阴影 +15...)
+* **色彩 (HSL):** (例如：橙色饱和度 -10 让肤色更通透...)
+* **质感/特效:** (例如：加一点颗粒感制造胶片味...)
+
+### 🎓 下次拍摄建议 (私教指导)
+* **构图优化:** (如果重拍，怎么构图更好？)
+* **光线运用:** (什么时间或角度拍更好？)
+* **模特引导:** (如果是人像，姿势怎么摆更自然？)
+
+---
+**导师寄语:** 给摄影师一句鼓励的话。
+"""
+
+# ================= 2. 界面设计 =================
 def main():
-    # 标题带 V3，证明更新成功
-    st.title("🎨 BayernGomez 智能修图大师 V3 (尝试出图版)")
+    # 侧边栏
+    with st.sidebar:
+        st.title("📸 设置与说明")
+        st.info("欢迎使用 BayernGomez 影像私教。上传照片，获取专业级摄影反馈。")
+        
+        # 模型选择 (默认用最稳的 Flash)
+        model_type = st.radio(
+            "选择私教级别:", 
+            ["Gemini 1.5 Flash (极速·免费)", "Gemini 1.5 Pro (专家·深度)"],
+            captions=["响应快，适合日常打卡", "思考深，适合精修作品"]
+        )
+        
+        # 映射模型名
+        real_model = "gemini-1.5-pro" if "Pro" in model_type else "gemini-1.5-flash"
+        
+        st.divider()
+        st.caption("Designed by BayernGomez")
+
+    # 主标题区
+    st.title("📸 BayernGomez 影像私教")
+    st.markdown("### 您的随身摄影导师，让每一张照片更出色。")
+
+    # === 核心交互区：标签页切换 ===
+    tab1, tab2 = st.tabs(["📂 相册上传 (文件)", "📷 现场拍摄 (相机)"])
     
-    col1, col2 = st.columns(2)
+    image_data = None
 
-    with col1:
-        st.subheader("1. 上传与需求")
-        uploaded_file = st.file_uploader("上传照片...", type=["jpg", "png"])
-        user_req = st.text_input("请输入需求 (例如：换成牛仔裤)")
-        
-        # 强制使用 Imagen 模型
-        start_btn = st.button("🚀 开始生成效果图", type="primary")
+    # Tab 1: 文件上传
+    with tab1:
+        uploaded_file = st.file_uploader("拖入或选择照片 (JPG/PNG)", type=["jpg", "jpeg", "png"])
+        if uploaded_file:
+            image_data = Image.open(uploaded_file)
 
-    if uploaded_file and start_btn:
-        image = Image.open(uploaded_file)
-        with col1:
-            st.image(image, caption="原图", use_container_width=True)
+    # Tab 2: 调用摄像头
+    with tab2:
+        camera_file = st.camera_input("点击拍摄")
+        if camera_file:
+            image_data = Image.open(camera_file)
+
+    # === 如果有图，显示分析界面 ===
+    if image_data:
+        st.divider()
         
-        with col2:
-            st.subheader("2. 处理结果")
+        # 左右分栏：左图右文
+        col_img, col_text = st.columns([1, 1.2])
+        
+        with col_img:
+            st.image(image_data, caption="待分析的影像", use_container_width=True)
+        
+        with col_text:
+            st.subheader("💡 导师视角")
+            user_input = st.text_area("您想问导师什么？(可选)", placeholder="例如：我觉得这张脸太黑了，怎么救？或者我想修成日系风格。")
             
-            # 1. 先用 Gemini 分析图片内容
-            status = st.status("正在分析原图内容...", expanded=True)
-            try:
-                vision_model = genai.GenerativeModel('gemini-1.5-flash')
-                description = vision_model.generate_content(["请详细描述这张图片的主体、姿势、环境，50字以内。", image]).text
-                status.write(f"原图识别：{description}")
-                
-                # 2. 尝试调用 Imagen 3 画图
-                status.update(label="正在尝试生成新图片 (Imagen 3)...", state="running")
-                
-                # 构造绘画提示词
-                prompt = f"High quality photo. {description}. Modifiction: {user_req}. Photorealistic, 8k."
-                
-                # === 关键：调用生图模型 ===
-                # 注意：如果您的 Key 没权限，这里会直接报错
-                painter = genai.ImageGenerationModel("imagen-3.0-generate-001")
-                
-                result = painter.generate_images(
-                    prompt=prompt,
-                    number_of_images=1,
-                    aspect_ratio="3:4",
-                    safety_filter="block_only_high"
-                )
-                
-                # 显示图片
-                status.update(label="✅ 生成成功！", state="complete")
-                
-                for img in result.images:
-                    img_pil = Image.open(io.BytesIO(img._image_bytes))
-                    st.image(img_pil, caption=f"AI 生成的效果图 (根据：{user_req})", use_container_width=True)
+            # 提交按钮
+            if st.button("🚀 开始专业评估", type="primary", use_container_width=True):
+                try:
+                    with st.status("🧠 导师正在分析构图与光影...", expanded=True) as status:
+                        st.write("正在读取影像信息...")
+                        # 调用模型
+                        model = genai.GenerativeModel(real_model, system_instruction=SYSTEM_PROMPT)
+                        
+                        req_text = "请评估这张照片。"
+                        if user_input:
+                            req_text += f" 我的具体困惑是：{user_input}"
+                        
+                        st.write("正在生成修图方案...")
+                        response = model.generate_content([req_text, image_data])
+                        
+                        status.update(label="✅ 评估报告已生成", state="complete", expanded=False)
                     
-            except Exception as e:
-                status.update(label="❌ 生成失败", state="error")
-                st.error("无法生成图片，原因如下：")
-                
-                error_msg = str(e)
-                if "404" in error_msg or "Not Found" in error_msg:
-                    st.warning("核心原因：您的免费 API Key 没有权限调用谷歌的 'Imagen 3' 画图模型。")
-                    st.info("解释：Google AI Studio 的画图功能目前仅对部分账号开放，或者只在网页版沙盒里可用，API 还没完全开放给免费用户。")
-                elif "403" in error_msg:
-                     st.warning("核心原因：权限被拒绝 (403)。您的账号所在地区或类型不支持生图。")
-                else:
-                    st.code(error_msg)
-                
-                st.write("---")
-                st.caption("虽然无法出图，但 Gemini 依然可以提供修图建议：")
-                # 兜底：如果画不出图，至少给个建议
-                advice_model = genai.GenerativeModel('gemini-1.5-flash')
-                advice = advice_model.generate_content([f"用户想把这张图：{user_req}，请给出PS修图步骤。", image]).text
-                st.markdown(advice)
+                    # 输出结果
+                    st.markdown(response.text)
+                    
+                except Exception as e:
+                    st.error(f"分析中断: {e}")
+                    if "429" in str(e):
+                        st.warning("提示：今日免费咨询次数已达上限，请明天再来。")
 
 if __name__ == "__main__":
     main()
