@@ -39,7 +39,7 @@ def main():
             real_model_name = "gemini-1.5-flash"
 
     # --- 主界面 ---
-    st.title("🎨 BayernGomez 智能修图大师")
+    st.title("🎨 BayernGomez 智能修图大师！")
     st.markdown("上传照片，AI 帮您分析修图思路！")
 
     # 上传组件
@@ -87,4 +87,5 @@ def main():
             st.error(f"图片加载失败，请换一张图试试。错误：{img_error}")
 
 if __name__ == "__main__":
+
     main()
