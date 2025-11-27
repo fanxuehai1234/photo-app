@@ -8,10 +8,8 @@ import random
 import os
 import logging
 
-# ================= 0. 核弹级消音 (彻底屏蔽日志噪音) =================
-# 屏蔽 Python 警告
+# ================= 0. 核弹级消音 =================
 warnings.filterwarnings("ignore")
-# 屏蔽 Streamlit 内部警告
 os.environ['STREAMLIT_logger_level'] = 'error'
 logging.getLogger('streamlit').setLevel(logging.ERROR)
 
@@ -20,39 +18,19 @@ st.set_page_config(
     page_title="一叶摇风 | 影像私教", 
     page_icon="🍃", 
     layout="wide",
-    initial_sidebar_state="expanded" # 强制展开侧边栏
+    initial_sidebar_state="expanded"
 )
 
-# CSS 深度优化
-st.markdown("""
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    /* 强制侧边栏显示 */
-    section[data-testid="stSidebar"] {
-        display: block !important;
-    }
-    /* 结果卡片美化 */
-    .result-card {
-        background-color: #f8f9fa;
-        border-left: 5px solid #4CAF50;
-        padding: 20px;
-        border-radius: 5px;
-        margin-top: 20px;
-        margin-bottom: 20px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# ================= 2. 状态初始化 =================
+# ================= 2. 状态初始化 (防崩核心) =================
 def init_session_state():
     defaults = {
         'logged_in': False,
         'user_phone': None,
         'expire_date': None,
         'history': [],
-        'favorites': []
+        'favorites': [],
+        'dark_mode': False, # 新增深色模式状态
+        'font_size': 16     # 新增字体状态
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -60,7 +38,72 @@ def init_session_state():
 
 init_session_state()
 
-# ================= 3. 工具函数 =================
+# ================= 3. 动态 CSS 注入 (换肤核心) =================
+def apply_theme():
+    # 根据深色模式开关，决定颜色变量
+    if st.session_state.dark_mode:
+        main_bg = "#1E1E1E"
+        text_col = "#FFFFFF"
+        card_bg = "#2D2D2D"
+        sidebar_bg = "#262626"
+        border_col = "#444"
+    else:
+        main_bg = "#FFFFFF"
+        text_col = "#000000"
+        card_bg = "#F8F9FA"
+        sidebar_bg = "#F0F2F6"
+        border_col = "#E0E0E0"
+
+    font_px = st.session_state.font_size
+
+    st.markdown(f"""
+    <style>
+    /* 全局背景和字体 */
+    .stApp {{
+        background-color: {main_bg};
+        color: {text_col};
+        transition: all 0.3s ease;
+    }}
+    
+    /* 强制隐藏无关元素 */
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
+    header {{visibility: hidden;}}
+    section[data-testid="stSidebar"] {{
+        display: block !important;
+        background-color: {sidebar_bg};
+    }}
+    
+    /* 结果卡片美化 */
+    .result-card {{
+        background-color: {card_bg};
+        border-left: 5px solid #4CAF50;
+        padding: 20px;
+        border-radius: 8px;
+        margin-top: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        color: {text_col};
+    }}
+    
+    /* 字体大小控制 */
+    .stMarkdown p, .stMarkdown li, .stMarkdown div {{
+        font-size: {font_px}px !important;
+        line-height: 1.6 !important;
+    }}
+    
+    /* 输入框样式微调 */
+    [data-baseweb="input"] {{
+        background-color: {card_bg};
+        color: {text_col};
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+# 立即应用主题
+apply_theme()
+
+# ================= 4. 工具函数 =================
 def configure_random_key():
     try:
         keys = st.secrets["API_KEYS"]
@@ -95,13 +138,12 @@ def create_html_report(text, user_req):
     </body></html>
     """
 
-# ================= 4. 界面逻辑 =================
+# ================= 5. 界面逻辑 =================
 
 # --- 登录界面 ---
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     with col_poster:
-        # 使用 use_container_width=True (这是1.40.0版本的标准写法，不会报错)
         st.image("https://images.unsplash.com/photo-1552168324-d612d77725e3?q=80&w=1000&auto=format&fit=crop", 
                  use_container_width=True)
         st.caption("“让每一张照片，都拥有灵魂。”")
@@ -111,12 +153,12 @@ def show_login_page():
         st.title("🍃 一叶摇风")
         st.markdown("#### 您的 24小时 AI 摄影私教")
         
-        # 核心功能卡片
+        # === 核心功能 (文案已优化) ===
         st.markdown("""
-        <div style="background-color:#f0f2f6; padding:15px; border-radius:10px; margin-bottom:10px;">
-        ✨ <b>一键评分</b>：AI 专业美学打分<br>
-        📊 <b>参数直出</b>：Lightroom / 醒图 数值<br>
-        🎓 <b>大师指导</b>：构图与光影建议
+        <div style="background-color:#f0f2f6; padding:15px; border-radius:10px; margin-bottom:10px; color:#333;">
+        ✨ <b>一键评分</b>：从构图、光影多维度专业打分<br>
+        📊 <b>修图参数</b>：直接给出 醒图 / Lightroom 具体数值<br>
+        🎓 <b>大师指导</b>：提供构图优化建议，教您拍大片
         </div>
         """, unsafe_allow_html=True)
         
@@ -154,7 +196,6 @@ def show_login_page():
                     st.session_state.logged_in = True
                     st.session_state.user_phone = phone_input
                     st.session_state.expire_date = expire_date_str
-                    # 登录时重置状态，防止缓存干扰
                     st.session_state.history = []
                     st.session_state.favorites = []
                     st.rerun()
@@ -170,11 +211,12 @@ def show_main_app():
     if not configure_random_key():
         st.stop()
 
-    # ★★★ 侧边栏逻辑 (放在这里确保登录后一定能看到) ★★★
+    # --- 侧边栏 ---
     with st.sidebar:
         st.title("🍃 用户中心")
         st.info(f"👤 {st.session_state.user_phone}")
-        st.caption(f"📅 有效期: {st.session_state.expire_date}")
+        if st.session_state.expire_date:
+            st.caption(f"📅 有效期: {st.session_state.expire_date}")
         
         st.markdown("---")
         st.markdown("**⚙️ 模式选择**")
@@ -186,7 +228,6 @@ def show_main_app():
         )
 
         st.markdown("---")
-        # 历史记录
         with st.expander("🕒 最近历史", expanded=False):
             if not st.session_state.history:
                 st.caption("暂无记录")
@@ -196,7 +237,6 @@ def show_main_app():
                     with st.popover(f"查看 #{len(st.session_state.history)-idx}"):
                         st.markdown(item['content'])
 
-        # 收藏夹
         with st.expander("❤️ 我的收藏", expanded=False):
             if not st.session_state.favorites:
                 st.caption("暂无收藏")
@@ -206,27 +246,37 @@ def show_main_app():
                         st.markdown(item['content'])
 
         st.markdown("---")
-        with st.expander("🛠️ 设置"):
-            font_size = st.slider("字体大小", 14, 24, 16)
-            show_exif_info = st.checkbox("显示参数(EXIF)", value=True)
-        
-        st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important;}}</style>", unsafe_allow_html=True)
+        # === ✨ 个性化设置 (功能已找回) ===
+        with st.expander("🛠️ 个性化设置", expanded=True):
+            # 1. 字体大小
+            new_size = st.slider("Aa 字体大小", 14, 24, st.session_state.font_size)
+            if new_size != st.session_state.font_size:
+                st.session_state.font_size = new_size
+                st.rerun() # 实时刷新
+            
+            # 2. 深色模式开关
+            new_dark = st.toggle("🌙 沉浸深色模式", value=st.session_state.dark_mode)
+            if new_dark != st.session_state.dark_mode:
+                st.session_state.dark_mode = new_dark
+                st.rerun() # 实时刷新
+            
+            # 3. EXIF 开关
+            show_exif_info = st.checkbox("📷 显示拍摄参数", value=True)
 
         if st.button("退出登录", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
             
-        # 版本号
         st.markdown("---")
-        st.caption(f"Ver: V13.0 Pro")
+        st.caption(f"Ver: V14.0 Final")
 
-    # ★★★ 主功能区 ★★★
+    # --- 提示词 ---
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
         active_prompt = """你是一位亲切的摄影博主“一叶摇风”。请输出Markdown：# 🌟 综合评分: {分数}/10\n### 📝 影像笔记\n### 🎨 手机修图参数表 (Wake/iPhone)\n| 参数 | 数值 | 目的 |\n|---|---|---|\n### 📸 随手拍建议\n---\n**🍃 一叶摇风寄语:** {金句}"""
         btn_label = "🚀 开始评估 (获取手机参数)"
         status_msg = "✨ 正在生成手机修图方案..."
-        banner_bg = "#e8f5e9"
+        banner_bg = "#e8f5e9" if not st.session_state.dark_mode else "#1b5e20"
         banner_icon = "🍃"
         banner_text = "日常记录 | 适用：朋友圈、手机摄影、快速出片"
     else:
@@ -234,14 +284,15 @@ def show_main_app():
         active_prompt = """你是一位视觉艺术总监“一叶摇风”。请输出Markdown：# 🏆 艺术总评: {分数}/10\n### 👁️ 视觉与美学解析\n### 🎨 商业后期面板 (Lightroom/C1)\n| 模块 | 参数 | 建议 |\n|---|---|---|\n### 🎓 大师进阶课\n---\n**🍃 一叶摇风寄语:** {哲理}"""
         btn_label = "💎 深度解析 (获取专业面板)"
         status_msg = "🧠 正在进行商业级光影分析..."
-        banner_bg = "#e3f2fd"
+        banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
         banner_icon = "🎓"
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
 
+    # --- 主界面 ---
     st.title("🍃 一叶摇风 | 影像私教")
     
     st.markdown(f"""
-    <div style="background-color: {banner_bg}; padding: 15px; border-radius: 10px; margin-bottom: 20px; color: #333;">
+    <div style="background-color: {banner_bg}; padding: 15px; border-radius: 10px; margin-bottom: 20px; color: {'#333' if not st.session_state.dark_mode else '#eee'};">
         <h4 style="margin:0; padding:0;">{banner_icon} 当前模式：{mode_select.split(' ')[1]}</h4>
         <small>{banner_text}</small>
     </div>
@@ -274,7 +325,16 @@ def show_main_app():
             with c2:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：我想修出日系通透感...")
                 
-                if st.button(btn_label, type="primary", use_container_width=True):
+                # 按钮组
+                b_col1, b_col2 = st.columns([3, 1])
+                with b_col1:
+                    start_analyze = st.button(btn_label, type="primary", use_container_width=True)
+                with b_col2:
+                    # === ✨ 新增功能：清空重置 ===
+                    if st.button("🗑️ 重置", use_container_width=True):
+                        st.rerun()
+
+                if start_analyze:
                     with st.status(status_msg, expanded=True) as s:
                         print(f"ACTION: User [{st.session_state.user_phone}] - Mode [{mode_select}]")
                         
@@ -286,6 +346,7 @@ def show_main_app():
                         s.update(label="✅ 分析完成", state="complete", expanded=False)
                     
                     result_text = response.text
+                    
                     st.markdown(f'<div class="result-card">{result_text}</div>', unsafe_allow_html=True)
                     
                     record = {"time": datetime.now().strftime("%H:%M"), "mode": mode_select, "content": result_text}
@@ -311,7 +372,7 @@ def show_main_app():
             else:
                 st.warning(f"错误: {err}")
 
-# ================= 5. 入口 =================
+# ================= 6. 入口 =================
 if __name__ == "__main__":
     if st.session_state.logged_in:
         show_main_app()
