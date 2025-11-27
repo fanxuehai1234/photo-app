@@ -5,13 +5,11 @@ from PIL import Image
 # 1. 页面设置
 st.set_page_config(page_title="BayernGomez 修图大师", page_icon="🎨")
 
-# 2. 自动读取 Key (云端保险箱)
+# 2. 自动读取 Key
 try:
-    # 尝试从后台读取 Key
     api_key = st.secrets["GOOGLE_API_KEY"]
 except:
-    # 如果读取失败，就在网页上报错
-    st.error("⚠️ 严重错误：未配置 API Key！请在 Streamlit 后台 Settings -> Secrets 中配置。")
+    st.error("⚠️ 错误：请在 Streamlit 后台配置 GOOGLE_API_KEY。")
     st.stop()
 
 # 3. 核心提示词
@@ -23,16 +21,27 @@ SYSTEM_PROMPT = """
 """
 
 def main():
-    # --- 侧边栏 (无输入框版) ---
     with st.sidebar:
         st.success("✅ 云端大脑已连接")
         st.info("无需翻墙 · 国内直连可用")
         
-        # 只保留模型选择
-        model_name = st.selectbox("选择大脑", ["gemini-1.5-flash (快)", "gemini-1.5-pro (强)"])
-        real_model_name = "gemini-1.5-flash" if "flash" in model_name else "gemini-1.5-pro"
+        # === 升级模型列表 ===
+        # 这里我们换上了目前真正最强的 2.0 和 1.5 Pro
+        model_name = st.selectbox("选择大脑", [
+            "gemini-2.0-flash-exp (最新 v2.0)", 
+            "gemini-1.5-pro (最强 v1.5)",
+            "gemini-1.5-flash (极速 v1.5)"
+        ])
+        
+        # 映射逻辑
+        if "2.0" in model_name:
+            real_model_name = "gemini-2.0-flash-exp"
+        elif "pro" in model_name:
+            real_model_name = "gemini-1.5-pro"
+        else:
+            real_model_name = "gemini-1.5-flash"
+        # ===================
 
-    # --- 主界面 ---
     st.title("🎨 BayernGomez 智能修图大师")
     st.write("上传照片，AI 帮您分析修图思路！")
 
@@ -46,21 +55,22 @@ def main():
 
         if st.button("🚀 开始智能分析"):
             try:
-                with st.spinner('🤖 AI 正在云端思考...'):
-                    # 自动注入 Key
+                with st.spinner(f'🤖 正在使用 {real_model_name} 思考中...'):
                     genai.configure(api_key=api_key)
-                    
                     model = genai.GenerativeModel(model_name=real_model_name, system_instruction=SYSTEM_PROMPT)
                     
                     prompt = "请分析这张图片。"
                     if user_req: prompt += f" 用户需求：{user_req}"
                     
                     response = model.generate_content([prompt, image])
-                    
                     st.success("✅ 分析完成！")
                     st.markdown(response.text)
             except Exception as e:
-                st.error(f"出错了：{e}")
+                # 如果 2.0 报错，通常是因为版本太新，提示用户
+                if "404" in str(e):
+                    st.error("出错啦！可能是 2.0 模型还在测试中，请在左侧切换回 1.5-pro 试试。")
+                else:
+                    st.error(f"出错了：{e}")
 
 if __name__ == "__main__":
     main()
