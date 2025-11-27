@@ -4,13 +4,12 @@ from PIL import Image, ExifTags
 import time
 from datetime import datetime
 import warnings
+import random  # 👈 新增：用于随机抽签
 
-# ================= 0. 核心去噪 (关键修改) =================
-# 这两行代码会屏蔽掉满屏的 "Please replace..." 废话
+# ================= 0. 核心配置 (已修复报错) =================
+# 屏蔽警告信息
 warnings.filterwarnings("ignore")
-st.set_option('deprecation.showfileUploaderEncoding', False)
 
-# ================= 1. 全局配置 & CSS =================
 st.set_page_config(
     page_title="一叶摇风 | 影像私教", 
     page_icon="🍃", 
@@ -18,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 隐藏无关元素 + 动态CSS注入槽
+# 隐藏无关元素 + 动态CSS
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -27,6 +26,26 @@ st.markdown("""
     .stApp {transition: background-color 0.5s ease;}
     </style>
     """, unsafe_allow_html=True)
+
+# ================= 1. 智能 Key 管理系统 (多Key版) =================
+def configure_random_key():
+    try:
+        # 尝试读取 Key 列表
+        keys = st.secrets["API_KEYS"]
+        
+        # 如果用户只填了一个字符串(旧格式)，兼容处理
+        if isinstance(keys, str):
+            current_key = keys
+        else:
+            # 随机抽取一个 Key
+            current_key = random.choice(keys)
+            
+        # 配置 Google
+        genai.configure(api_key=current_key)
+        return True
+    exceptException as e:
+        st.error("⚠️ 后台 Secrets 配置错误：未找到 'API_KEYS' 列表。")
+        return False
 
 # ================= 2. 登录验证系统 =================
 def check_login():
@@ -86,7 +105,6 @@ def check_login():
                     st.session_state.logged_in = True
                     st.session_state.user_phone = phone_input
                     st.session_state.expire_date = expire_date_str
-                    # 这里的 print 是给您后台看的，现在应该很干净了
                     print(f"LOGIN SUCCESS: [{phone_input}]")
                     st.toast("登录成功！", icon="🎉")
                     time.sleep(0.5)
@@ -115,16 +133,12 @@ def get_exif_data(image):
         pass
     return exif_data
 
-# ================= 4. 主程序 (功能大升级) =================
+# ================= 4. 主程序 =================
 def main_app():
-    try:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-        genai.configure(api_key=api_key)
-    except:
-        st.error("API Key 缺失")
+    # 初始化 Key (每次刷新页面都会重新随机选一个 Key)
+    if not configure_random_key():
         st.stop()
 
-    # --- 提示词 ---
     PROMPT_DAILY = """
     你是一位亲切的摄影博主“一叶摇风”。
     请输出 Markdown：
@@ -153,7 +167,7 @@ def main_app():
     **🍃 一叶摇风寄语:** {哲理}
     """
 
-    # --- 侧边栏：控制中心 ---
+    # --- 侧边栏 ---
     with st.sidebar:
         st.title("🍃 用户中心")
         st.info(f"用户: {st.session_state.user_phone}")
@@ -168,16 +182,12 @@ def main_app():
             index=0
         )
         
-        # === ✨ 新增功能：个性化设置 ===
+        # 个性化设置
         with st.expander("🛠️ 个性化设置", expanded=False):
-            # 1. 字体大小
-            font_size = st.slider("Aa 字体大小", 14, 24, 16, help="调整分析报告的文字大小")
-            # 2. 沉浸模式 (深色背景)
+            font_size = st.slider("Aa 字体大小", 14, 24, 16)
             dark_mode = st.toggle("🌙 沉浸深色模式")
-            # 3. 专业参数开关
-            show_exif_info = st.checkbox("📷 显示拍摄参数 (EXIF)", value=True)
+            show_exif_info = st.checkbox("📷 显示拍摄参数", value=True)
 
-        # 动态 CSS 注入 (根据设置改变样式)
         bg_color = "#1e1e1e" if dark_mode else "#ffffff"
         text_color = "#ffffff" if dark_mode else "#000000"
         
@@ -187,7 +197,6 @@ def main_app():
             background-color: {bg_color};
             color: {text_color};
         }}
-        /* 调整 Markdown 正文大小 */
         .stMarkdown p, .stMarkdown li {{
             font-size: {font_size}px !important;
         }}
@@ -214,7 +223,6 @@ def main_app():
     # --- 主界面 ---
     st.title("🍃 一叶摇风 | 影像私教")
     
-    # 顶部状态条
     if "日常" in mode_select:
         st.success("当前模式：**日常记录** | 适用：手机摄影、朋友圈打卡")
     else:
@@ -226,11 +234,11 @@ def main_app():
     with tab1:
         f = st.file_uploader("支持 JPG/PNG/WEBP", type=["jpg","png","webp"], key="up_file")
         if f: img_file = f
+            
     with tab2:
         c = st.camera_input("点击拍摄", key="cam_file")
         if c: img_file = c
 
-    # --- 分析逻辑 ---
     if img_file:
         st.divider()
         try:
@@ -239,24 +247,21 @@ def main_app():
             
             with c1:
                 st.image(image, caption="待分析影像", use_container_width=True)
-                
-                # === ✨ 新增功能：显示 EXIF 信息 (专业感拉满) ===
                 if show_exif_info:
                     exif = get_exif_data(image)
                     if exif:
-                        with st.expander("📷 查看照片详细参数 (ISO/快门/光圈)"):
+                        with st.expander("📷 照片详细参数 (EXIF)"):
                             st.json(exif)
-                    else:
-                        st.caption("ℹ️ 未检测到拍摄参数 (可能是微信传输或截图)")
             
             with c2:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：我想修出日系通透感...")
                 
                 if st.button(btn_label, type="primary", use_container_width=True):
                     with st.status(status_msg, expanded=True) as s:
-                        # 记录干净的日志
                         print(f"ACTION: User [{st.session_state.user_phone}] - Mode [{mode_select}]")
                         
+                        # --- 核心：随机Key已在 main_app 开头配置好 ---
+                        # 直接调用即可
                         model = genai.GenerativeModel(real_model, system_instruction=active_prompt)
                         msg = "分析此图。"
                         if user_req: msg += f" 备注：{user_req}"
@@ -264,10 +269,8 @@ def main_app():
                         response = model.generate_content([msg, image])
                         s.update(label="✅ 分析完成", state="complete", expanded=False)
                     
-                    # 展示结果
                     st.markdown(response.text)
                     
-                    # === ✨ 新增功能：下载报告 ===
                     st.download_button(
                         label="📥 下载分析报告",
                         data=response.text,
@@ -277,9 +280,12 @@ def main_app():
                     
         except Exception as e:
             st.error("分析中断")
+            # 智能错误提示
             err = str(e)
-            if "404" in err or "429" in err:
-                st.warning("服务繁忙，请稍等片刻再试。")
+            if "429" in err:
+                st.warning("⚠️ 当前线路繁忙 (429)，请点击按钮重试，系统将自动切换线路。")
+            elif "404" in err:
+                st.warning("⚠️ 模型暂时不可用，请切换“日常/专业”模式试试。")
             else:
                 st.warning(f"错误信息: {err}")
 
