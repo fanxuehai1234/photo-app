@@ -7,7 +7,23 @@ st.set_page_config(page_title="BayernGomez 修图大师", page_icon="🎨")
 
 # 2. 自动读取 Key
 try:
-    api_key = st.secrets["GOOGLE_API_KEY"]
+    if st.button("🚀 开始智能分析"):
+            try:
+                with st.spinner(f'🤖 正在使用 {real_model_name} 思考中...'):
+                    genai.configure(api_key=api_key)
+                    model = genai.GenerativeModel(model_name=real_model_name, system_instruction=SYSTEM_PROMPT)
+                    
+                    prompt = "请分析这张图片。"
+                    if user_req: prompt += f" 用户需求：{user_req}"
+                    
+                    response = model.generate_content([prompt, image])
+                    st.success("✅ 分析完成！")
+                    st.markdown(response.text)
+            except Exception as e:
+                # === 修改这里：不再瞎猜是2.0的问题，直接把真实错误打印出来 ===
+                st.error(f"❌ 调用失败")
+                st.warning(f"错误详情：{e}")
+                st.info("💡 排查建议：\n1. 如果显示 429 Quota exceeded，说明该模型免费额度已用完，请切换到 1.5-flash 试试。\n2. 2.0 模型目前对免费账号极不稳定，建议暂用 1.5。")
 except:
     st.error("⚠️ 错误：请在 Streamlit 后台配置 GOOGLE_API_KEY。")
     st.stop()
@@ -73,4 +89,5 @@ def main():
                     st.error(f"出错了：{e}")
 
 if __name__ == "__main__":
+
     main()
