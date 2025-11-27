@@ -4,7 +4,7 @@ from PIL import Image
 import time
 from datetime import datetime
 
-# ================= 1. 全局配置 =================
+# ================= 1. 全局配置 & CSS美化 =================
 st.set_page_config(
     page_title="一叶摇风 | 影像私教", 
     page_icon="🍃", 
@@ -12,7 +12,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ================= 2. 登录验证系统 (带有效期控制) =================
+# --- 注入 CSS 隐藏多余元素，打造沉浸式 App 感 ---
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stApp {
+        background-color: #ffffff;
+    }
+    /* 优化手机端显示 */
+    [data-testid="stVerticalBlock"] {
+        gap: 1rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ================= 2. 登录验证系统 (商业优化版) =================
 def check_login():
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
@@ -22,104 +38,107 @@ def check_login():
     if st.session_state.logged_in:
         return True
 
-    # --- 布局：左海报，右登录 ---
-    col_poster, col_login = st.columns([1.2, 1])
+    # --- 布局优化：使用更紧凑的列比例 ---
+    # 空白 : 图片 : 登录框 : 空白
+    # 这样可以让登录框在电脑上看起来更聚气
+    col_padding1, col_img, col_login, col_padding2 = st.columns([0.5, 3, 2.5, 0.5])
     
-    with col_poster:
-        st.image("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=1000&auto=format&fit=crop", 
-                 caption="Capture the moment. Analyze the soul.", 
+    # --- 左侧：视觉海报 ---
+    with col_img:
+        # 换了一张更有意境、色调更高级的竖版摄影图
+        st.image("https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=1000&auto=format&fit=crop", 
                  use_container_width=True)
+        
+        # 在图片下方加简短标语，手机上也能看到
+        st.caption("“摄影不仅是记录，更是表达。” —— 一叶摇风")
 
+    # --- 右侧：登录核心区 ---
     with col_login:
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.title("🍃 一叶摇风影像")
+        st.markdown("<br>", unsafe_allow_html=True) # 顶部留白微调
         
-        # === ✨ 新增：产品功能简介 ===
-        st.info("""
-        **您的 24小时 AI 摄影私教**
+        # 品牌 Logo 区
+        st.title("🍃 一叶摇风")
+        st.markdown("#### 您的 24小时 AI 摄影私教")
         
-        📸 **一键上传**：支持相册图片或现场拍摄。
-        📊 **修图参数**：直接给出醒图/Lightroom 具体数值 (如: 曝光+10)。
-        🎓 **拍摄指导**：大师级构图与光影分析建议。
-        """)
+        # 功能亮点 (用更精炼的列表)
+        st.markdown("""
+        <style>
+        .feature-box {
+            background-color: #f0f2f6;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        </style>
+        <div class="feature-box">
+        ✨ <b>一键评分</b>：AI 专业美学打分<br>
+        📊 <b>修图参数</b>：直接生成修图数值表<br>
+        🎓 <b>拍摄指导</b>：大师级构图建议
+        </div>
+        """, unsafe_allow_html=True)
         
-        st.divider()
-        
-        # === 登录卡片 ===
+        # 登录表单
         with st.container(border=True):
             st.subheader("🔐 会员登录")
-            phone_input = st.text_input("手机号码", placeholder="请输入您的手机号", max_chars=11)
-            code_input = st.text_input("激活码", placeholder="请输入您的专属 Key", type="password")
             
-            if st.button("立即登录 / Login", type="primary", use_container_width=True):
-                # 1. 基础校验
+            phone_input = st.text_input("手机号码", placeholder="请输入手机号", max_chars=11)
+            code_input = st.text_input("激活码 / Key", placeholder="请输入您的专属 Key", type="password")
+            
+            if st.button("立即登录", type="primary", use_container_width=True):
+                # 校验逻辑
                 if len(phone_input) != 11:
-                    st.error("请输入 11 位手机号码")
+                    st.error("手机号格式错误")
                     return False
                 
-                # 2. 读取后台数据
                 try:
-                    # 格式升级为：["手机号:激活码:到期日期"]
                     valid_accounts = st.secrets["VALID_ACCOUNTS"]
                 except:
-                    st.error("系统配置维护中")
+                    st.error("系统维护中")
                     return False
 
-                # 3. 核心验证逻辑
                 login_success = False
                 expire_date_str = ""
                 
-                # 遍历后台列表进行匹配
                 for account_str in valid_accounts:
                     try:
-                        # 解析字符串 "手机:码:日期"
                         parts = account_str.split(":")
                         if len(parts) == 3:
-                            db_phone = parts[0].strip()
-                            db_code = parts[1].strip()
-                            db_date = parts[2].strip()
-                            
-                            # 匹配手机和密码
-                            if phone_input == db_phone and code_input == db_code:
-                                # 检查是否过期
-                                exp_date = datetime.strptime(db_date, "%Y-%m-%d")
-                                now_date = datetime.now()
-                                
-                                if now_date > exp_date:
-                                    st.error(f"❌ 您的会员已于 {db_date} 到期，请联系微信续费。")
+                            if phone_input == parts[0].strip() and code_input == parts[1].strip():
+                                exp_date = datetime.strptime(parts[2].strip(), "%Y-%m-%d")
+                                if datetime.now() > exp_date:
+                                    st.error(f"❌ 会员已于 {parts[2]} 到期")
                                     return False
-                                else:
-                                    login_success = True
-                                    expire_date_str = db_date
-                                    break
-                    except:
-                        continue # 跳过格式错误的行
+                                login_success = True
+                                expire_date_str = parts[2]
+                                break
+                    except: continue
 
                 if login_success:
                     st.session_state.logged_in = True
                     st.session_state.user_phone = phone_input
                     st.session_state.expire_date = expire_date_str
-                    print(f"✅ LOGIN: [{phone_input}] Exp:{expire_date_str}")
-                    st.success(f"验证通过！有效期至：{expire_date_str}")
-                    time.sleep(0.8)
+                    print(f"LOGIN SUCCESS: [{phone_input}]")
+                    st.toast("登录成功！正在跳转...", icon="🎉")
+                    time.sleep(0.5)
                     st.rerun()
                 else:
-                    st.error("登录失败：账号密码错误，或未授权。")
+                    st.error("账号或激活码错误")
                     return False
 
-        # === 购买与安装 ===
-        st.caption("💎 购买会员/续费请联系微信：**BayernGomez**")
-        with st.expander("📲 如何安装到手机桌面？"):
-            st.markdown("""
-            **iPhone:** Safari 打开 -> 分享按钮 -> 添加到主屏幕
-            **Android:** Chrome 打开 -> 菜单 -> 添加到主屏幕
-            """)
-    
+        # === 💰 变现入口 (高亮显示) ===
+        st.warning("💎 **获取激活码 / 续费请联系微信：BayernGomez**")
+        
+        st.caption("⚠️ 提示：账号仅限本人使用，多设备登录将自动封号。")
+
+        # 安装教程 (折叠)
+        with st.expander("📲 点我查看：如何安装到手机桌面？"):
+            st.markdown("iPhone: Safari分享 -> 添加到主屏幕\n\nAndroid: Chrome菜单 -> 添加到主屏幕")
+
     return False
 
-# ================= 3. 主程序逻辑 =================
+# ================= 3. 主程序 (保持不变) =================
 def main_app():
-    # 读取 Key
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
         genai.configure(api_key=api_key)
@@ -127,7 +146,6 @@ def main_app():
         st.error("API Key 缺失")
         st.stop()
 
-    # 提示词
     PROMPT_DAILY = """
     你是一位亲切的摄影博主“一叶摇风”。
     请输出 Markdown：
@@ -153,10 +171,8 @@ def main_app():
     with st.sidebar:
         st.title("🍃 用户中心")
         st.success(f"📱 用户: {st.session_state.user_phone}")
-        # 显示有效期
         if st.session_state.expire_date:
-            st.caption(f"📅 有效期至: {st.session_state.expire_date}")
-            
+            st.caption(f"📅 有效期: {st.session_state.expire_date}")
         if st.button("退出登录"):
             st.session_state.logged_in = False
             st.rerun()
