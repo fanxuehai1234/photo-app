@@ -7,6 +7,9 @@ import warnings
 import random
 
 # ================= 0. 核心配置 =================
+# 当前版本号 (每次您更新代码时，手动改一下这个数字，用户就能看到了)
+APP_VERSION = "V9.0 (多线路稳定版)"
+
 warnings.filterwarnings("ignore")
 
 st.set_page_config(
@@ -28,21 +31,23 @@ st.markdown("""
 # ================= 1. 智能 Key 管理系统 =================
 def configure_random_key():
     try:
-        # 尝试读取 Key 列表
+        # 读取 Key 列表
         keys = st.secrets["API_KEYS"]
         
-        # 如果用户只填了一个字符串(旧格式)，兼容处理
+        # 兼容处理：如果是字符串转为列表，如果是列表直接用
         if isinstance(keys, str):
-            current_key = keys
+            key_list = [keys]
         else:
-            # 随机抽取一个 Key
-            current_key = random.choice(keys)
+            key_list = keys
             
+        # 随机抽取
+        current_key = random.choice(key_list)
+        
         # 配置 Google
         genai.configure(api_key=current_key)
         return True
-    except Exception as e:  # 👈 修复了这里！加了空格
-        st.error(f"⚠️ 后台 Secrets 配置错误：{e}")
+    except Exception as e:
+        st.error(f"⚠️ 系统配置错误：{e}")
         return False
 
 # ================= 2. 登录验证系统 =================
@@ -65,7 +70,7 @@ def check_login():
     with col_login:
         st.markdown("<br>", unsafe_allow_html=True)
         st.title("🍃 一叶摇风")
-        st.markdown("#### 您的 24小时 AI 摄影私教")
+        st.markdown(f"#### 您的 24小时 AI 摄影私教 <span style='font-size:12px;color:gray'>{APP_VERSION}</span>", unsafe_allow_html=True)
         
         with st.container(border=True):
             st.subheader("🔐 会员登录")
@@ -103,7 +108,6 @@ def check_login():
                     st.session_state.logged_in = True
                     st.session_state.user_phone = phone_input
                     st.session_state.expire_date = expire_date_str
-                    print(f"LOGIN SUCCESS: [{phone_input}]")
                     st.toast("登录成功！", icon="🎉")
                     time.sleep(0.5)
                     st.rerun()
@@ -117,7 +121,7 @@ def check_login():
 
     return False
 
-# ================= 3. 辅助功能：读取 EXIF =================
+# ================= 3. 辅助功能 =================
 def get_exif_data(image):
     exif_data = {}
     try:
@@ -133,7 +137,6 @@ def get_exif_data(image):
 
 # ================= 4. 主程序 =================
 def main_app():
-    # 初始化 Key
     if not configure_random_key():
         st.stop()
 
@@ -165,7 +168,6 @@ def main_app():
     **🍃 一叶摇风寄语:** {哲理}
     """
 
-    # --- 侧边栏 ---
     with st.sidebar:
         st.title("🍃 用户中心")
         st.info(f"用户: {st.session_state.user_phone}")
@@ -201,11 +203,13 @@ def main_app():
         """, unsafe_allow_html=True)
 
         st.divider()
+        # === 底部显示版本号 ===
+        st.caption(f"当前版本: {APP_VERSION}")
+        
         if st.button("退出登录", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
 
-    # --- 路由 ---
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
         active_prompt = PROMPT_DAILY
@@ -217,7 +221,6 @@ def main_app():
         btn_label = "💎 深度解析 (获取专业面板)"
         status_msg = "🧠 正在进行商业级光影分析..."
 
-    # --- 主界面 ---
     st.title("🍃 一叶摇风 | 影像私教")
     
     if "日常" in mode_select:
@@ -235,7 +238,6 @@ def main_app():
         c = st.camera_input("点击拍摄", key="cam_file")
         if c: img_file = c
 
-    # --- 分析 ---
     if img_file:
         st.divider()
         try:
@@ -277,7 +279,7 @@ def main_app():
             st.error("分析中断")
             err = str(e)
             if "429" in err:
-                st.warning("⚠️ 额度已满或繁忙，请点击按钮重试 (系统会自动切换 Key)")
+                st.warning("⚠️ 额度已满，请点击按钮重试 (系统会自动切换备用线路)")
             elif "404" in err:
                 st.warning("⚠️ 模型暂不可用，请切换模式")
             else:
