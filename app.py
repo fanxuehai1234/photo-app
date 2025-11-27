@@ -16,20 +16,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS 深度美化 ---
+# CSS 美化
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     .stApp {transition: background-color 0.5s ease;}
-    
-    /* 优化侧边栏文字 */
-    [data-testid="stSidebar"] {
-        background-color: #f8f9fa;
-    }
-    
-    /* 结果卡片样式 */
+    [data-testid="stSidebar"] {background-color: #f8f9fa;}
     .result-card {
         background-color: #ffffff;
         padding: 20px;
@@ -41,9 +35,24 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 1. 功能函数库 =================
+# ================= 1. 初始化状态 (修复报错的核心) =================
+def init_session():
+    # 强制检查每一个变量，没有就创建
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'user_phone' not in st.session_state:
+        st.session_state.user_phone = None
+    if 'expire_date' not in st.session_state:
+        st.session_state.expire_date = None
+    if 'history' not in st.session_state:
+        st.session_state.history = []  # 👈 之前报错就是缺这个
+    if 'favorites' not in st.session_state:
+        st.session_state.favorites = []
 
-# 智能 Key 管理
+# 运行初始化
+init_session()
+
+# ================= 2. 功能函数库 =================
 def configure_random_key():
     try:
         keys = st.secrets["API_KEYS"]
@@ -55,7 +64,6 @@ def configure_random_key():
         st.error(f"⚠️ 系统配置错误：{e}")
         return False
 
-# EXIF 读取
 def get_exif_data(image):
     exif_data = {}
     try:
@@ -68,8 +76,8 @@ def get_exif_data(image):
     except: pass
     return exif_data
 
-# 生成 HTML 报告 (替代 PDF，解决中文乱码问题)
 def create_html_report(text, user_req):
+    # 生成可下载的 HTML 报告
     html = f"""
     <html>
     <head>
@@ -99,16 +107,8 @@ def create_html_report(text, user_req):
     """
     return html
 
-# ================= 2. 登录系统 =================
+# ================= 3. 登录逻辑 =================
 def check_login():
-    if 'logged_in' not in st.session_state:
-        st.session_state.logged_in = False
-        st.session_state.user_phone = None
-        st.session_state.expire_date = None
-        # 初始化历史记录和收藏
-        st.session_state.history = [] 
-        st.session_state.favorites = []
-
     if st.session_state.logged_in:
         return True
 
@@ -120,7 +120,7 @@ def check_login():
     with col_login:
         st.markdown("<br>", unsafe_allow_html=True)
         st.title("🍃 一叶摇风")
-        st.markdown(f"#### 您的 24小时 AI 摄影私教 <span style='font-size:12px;color:gray'>V10.0 旗舰版</span>", unsafe_allow_html=True)
+        st.markdown(f"#### 您的 24小时 AI 摄影私教 <span style='font-size:12px;color:gray'>V10.1 修复版</span>", unsafe_allow_html=True)
         
         with st.container(border=True):
             st.subheader("🔐 会员登录")
@@ -157,6 +157,9 @@ def check_login():
                     st.session_state.logged_in = True
                     st.session_state.user_phone = phone_input
                     st.session_state.expire_date = expire_date_str
+                    # 重新初始化一次以防万一
+                    st.session_state.history = []
+                    st.session_state.favorites = []
                     st.toast("登录成功！", icon="🎉")
                     time.sleep(0.5)
                     st.rerun()
@@ -169,7 +172,7 @@ def check_login():
             st.markdown("iPhone: Safari分享 -> 添加到主屏幕\n\nAndroid: Chrome菜单 -> 添加到主屏幕")
     return False
 
-# ================= 3. 主程序 =================
+# ================= 4. 主程序 =================
 def main_app():
     if not configure_random_key():
         st.stop()
@@ -202,7 +205,7 @@ def main_app():
     **🍃 一叶摇风寄语:** {哲理}
     """
 
-    # --- 侧边栏：控制中心 (UI优化) ---
+    # --- 侧边栏 ---
     with st.sidebar:
         st.title("🍃 用户中心")
         st.info(f"👤 {st.session_state.user_phone}")
@@ -217,8 +220,12 @@ def main_app():
             label_visibility="collapsed"
         )
 
-        # --- 新增：历史记录与收藏 ---
+        # --- 历史记录与收藏 ---
         st.markdown("---")
+        # 确保 history 存在，防止报错
+        if 'history' not in st.session_state: st.session_state.history = []
+        if 'favorites' not in st.session_state: st.session_state.favorites = []
+
         with st.expander("🕒 最近历史 (Last 5)", expanded=False):
             if not st.session_state.history:
                 st.caption("暂无记录")
@@ -241,33 +248,31 @@ def main_app():
             font_size = st.slider("字体大小", 14, 24, 16)
             show_exif_info = st.checkbox("显示参数(EXIF)", value=True)
         
-        # 字体大小动态应用
         st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important;}}</style>", unsafe_allow_html=True)
 
         if st.button("退出登录", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
 
-    # --- 路由配置 ---
+    # --- 路由 ---
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
         active_prompt = PROMPT_DAILY
         btn_label = "🚀 开始评估 (获取手机参数)"
         status_msg = "✨ 正在生成手机修图方案..."
-        banner_color = "rgba(76, 175, 80, 0.1)" # 绿色背景
+        banner_color = "rgba(76, 175, 80, 0.1)"
         banner_icon = "🍃"
     else:
         real_model = "gemini-2.5-flash"
         active_prompt = PROMPT_PRO
         btn_label = "💎 深度解析 (获取专业面板)"
         status_msg = "🧠 正在进行商业级光影分析..."
-        banner_color = "rgba(33, 150, 243, 0.1)" # 蓝色背景
+        banner_color = "rgba(33, 150, 243, 0.1)"
         banner_icon = "🎓"
 
     # --- 主界面 ---
     st.title("🍃 一叶摇风 | 影像私教")
     
-    # 顶部美化 Banner
     st.markdown(f"""
     <div style="background-color: {banner_color}; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
         <h4 style="margin:0; padding:0;">{banner_icon} 当前模式：{mode_select.split(' ')[1]}</h4>
@@ -285,7 +290,6 @@ def main_app():
         c = st.camera_input("点击拍摄", key="cam_file")
         if c: img_file = c
 
-    # --- 分析逻辑 ---
     if img_file:
         st.divider()
         try:
@@ -314,44 +318,37 @@ def main_app():
                         response = model.generate_content([msg, image])
                         s.update(label="✅ 分析完成", state="complete", expanded=False)
                     
-                    # === 结果展示卡片化 ===
                     result_text = response.text
-                    st.markdown(f'<div class="result-card">{result_text}</div>', unsafe_allow_html=True) # 使用卡片样式
-                    st.markdown(result_text) # 渲染 Markdown
+                    st.markdown(f'<div class="result-card">{result_text}</div>', unsafe_allow_html=True)
+                    st.markdown(result_text)
                     
-                    # === 保存历史记录 (内存中) ===
+                    # 写入历史记录
                     timestamp = datetime.now().strftime("%H:%M")
                     record = {"time": timestamp, "mode": mode_select, "content": result_text}
                     st.session_state.history.append(record)
-                    # 保持只存最近5条
                     if len(st.session_state.history) > 5:
                         st.session_state.history.pop(0)
 
-                    # === 功能按钮区 ===
                     btn_col1, btn_col2 = st.columns(2)
-                    
                     with btn_col1:
-                        # 下载 HTML 报告
                         html_report = create_html_report(result_text, user_req)
                         st.download_button(
-                            label="📥 下载精美报告 (可打印)",
+                            label="📥 下载精美报告",
                             data=html_report,
-                            file_name=f"一叶摇风分析_{int(time.time())}.html",
+                            file_name=f"一叶摇风_修图建议.html",
                             mime="text/html",
                             use_container_width=True
                         )
-                    
                     with btn_col2:
-                        # 收藏功能
                         if st.button("❤️ 加入收藏夹", use_container_width=True):
                             st.session_state.favorites.append(record)
-                            st.toast("已收藏！请在侧边栏查看", icon="⭐")
+                            st.toast("已收藏！", icon="⭐")
 
         except Exception as e:
             st.error("分析中断")
             err = str(e)
             if "429" in err:
-                st.warning("⚠️ 额度已满或繁忙，请重试 (系统会自动切换 Key)")
+                st.warning("⚠️ 额度已满或繁忙，请重试")
             elif "404" in err:
                 st.warning("⚠️ 模型暂不可用，请切换模式")
             else:
