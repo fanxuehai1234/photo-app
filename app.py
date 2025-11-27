@@ -1,10 +1,16 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image
+from PIL import Image, ExifTags
 import time
 from datetime import datetime
+import warnings
 
-# ================= 1. 全局配置 & CSS美化 =================
+# ================= 0. 核心去噪 (关键修改) =================
+# 这两行代码会屏蔽掉满屏的 "Please replace..." 废话
+warnings.filterwarnings("ignore")
+st.set_option('deprecation.showfileUploaderEncoding', False)
+
+# ================= 1. 全局配置 & CSS =================
 st.set_page_config(
     page_title="一叶摇风 | 影像私教", 
     page_icon="🍃", 
@@ -12,17 +18,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 隐藏 Streamlit 自带的无关元素，打造沉浸式体验
+# 隐藏无关元素 + 动态CSS注入槽
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    .stApp {background-color: #ffffff;}
+    .stApp {transition: background-color 0.5s ease;}
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 2. 登录验证系统 (保留完美版) =================
+# ================= 2. 登录验证系统 =================
 def check_login():
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
@@ -32,7 +38,6 @@ def check_login():
     if st.session_state.logged_in:
         return True
 
-    # 布局：左海报，右登录
     col_poster, col_login = st.columns([1.2, 1])
     
     with col_poster:
@@ -51,7 +56,6 @@ def check_login():
             code_input = st.text_input("激活码 / Key", placeholder="请输入专属 Key", type="password")
             
             if st.button("立即登录", type="primary", use_container_width=True):
-                # 校验逻辑
                 if len(phone_input) != 11:
                     st.error("手机号格式错误")
                     return False
@@ -82,6 +86,8 @@ def check_login():
                     st.session_state.logged_in = True
                     st.session_state.user_phone = phone_input
                     st.session_state.expire_date = expire_date_str
+                    # 这里的 print 是给您后台看的，现在应该很干净了
+                    print(f"LOGIN SUCCESS: [{phone_input}]")
                     st.toast("登录成功！", icon="🎉")
                     time.sleep(0.5)
                     st.rerun()
@@ -95,9 +101,22 @@ def check_login():
 
     return False
 
-# ================= 3. 主程序 (隐藏技术细节版) =================
+# ================= 3. 辅助功能：读取 EXIF =================
+def get_exif_data(image):
+    exif_data = {}
+    try:
+        info = image._getexif()
+        if info:
+            for tag, value in info.items():
+                decoded = ExifTags.TAGS.get(tag, tag)
+                if decoded in ['Make', 'Model', 'DateTimeOriginal', 'ISOSpeedRatings', 'FNumber', 'ExposureTime']:
+                    exif_data[decoded] = value
+    except:
+        pass
+    return exif_data
+
+# ================= 4. 主程序 (功能大升级) =================
 def main_app():
-    # 读取 Key
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
         genai.configure(api_key=api_key)
@@ -105,12 +124,12 @@ def main_app():
         st.error("API Key 缺失")
         st.stop()
 
-    # --- 提示词 (幕后配置) ---
+    # --- 提示词 ---
     PROMPT_DAILY = """
     你是一位亲切的摄影博主“一叶摇风”。
     请输出 Markdown：
     # 🌟 综合评分: {分数}/10
-    ### 📝 影像笔记 (温暖点评)
+    ### 📝 影像笔记
     ### 🎨 手机修图参数表 (Wake/iPhone)
     | 参数 | 数值 | 目的 |
     | :--- | :--- | :--- |
@@ -125,9 +144,6 @@ def main_app():
     请输出 Markdown：
     # 🏆 艺术总评: {分数}/10
     ### 👁️ 视觉与美学解析
-    * **构图:** ...
-    * **光影:** ...
-    * **色彩:** ...
     ### 🎨 商业后期面板 (Lightroom/C1)
     | 模块 | 参数 | 建议数值 |
     | :--- | :--- | :--- |
@@ -137,7 +153,7 @@ def main_app():
     **🍃 一叶摇风寄语:** {哲理}
     """
 
-    # --- 侧边栏 (极简风格) ---
+    # --- 侧边栏：控制中心 ---
     with st.sidebar:
         st.title("🍃 用户中心")
         st.info(f"用户: {st.session_state.user_phone}")
@@ -145,53 +161,71 @@ def main_app():
             st.caption(f"有效期至: {st.session_state.expire_date}")
         
         st.divider()
-        
-        # === 核心修改：只展示功能，隐藏模型 ===
-        st.markdown("**⚙️ 功能模式**")
+        st.write("**⚙️ 模式选择**")
         mode_select = st.radio(
             "选择分析深度:", 
             ["📷 日常快评 (生活照)", "🧐 专业艺术 (作品集)"],
-            index=0, # 默认选第一个
-            help="日常模式适合发朋友圈，提供手机参数；专业模式适合摄影创作，提供LR参数。"
+            index=0
         )
         
-        # === 核心修改：后台自动分配模型 ===
-        if "日常" in mode_select:
-            # 后台悄悄调用 2.0 Flash Lite
-            real_model = "gemini-2.0-flash-lite-preview-02-05"
-            active_prompt = PROMPT_DAILY
-            btn_label = "🚀 开始评估 (获取手机参数)"
-            status_msg = "✨ 正在生成手机修图方案..."
-        else:
-            # 后台悄悄调用 2.5 Flash
-            real_model = "gemini-2.5-flash"
-            active_prompt = PROMPT_PRO
-            btn_label = "💎 深度解析 (获取专业面板)"
-            status_msg = "🧠 正在进行商业级光影分析..."
+        # === ✨ 新增功能：个性化设置 ===
+        with st.expander("🛠️ 个性化设置", expanded=False):
+            # 1. 字体大小
+            font_size = st.slider("Aa 字体大小", 14, 24, 16, help="调整分析报告的文字大小")
+            # 2. 沉浸模式 (深色背景)
+            dark_mode = st.toggle("🌙 沉浸深色模式")
+            # 3. 专业参数开关
+            show_exif_info = st.checkbox("📷 显示拍摄参数 (EXIF)", value=True)
+
+        # 动态 CSS 注入 (根据设置改变样式)
+        bg_color = "#1e1e1e" if dark_mode else "#ffffff"
+        text_color = "#ffffff" if dark_mode else "#000000"
+        
+        st.markdown(f"""
+        <style>
+        .stApp {{
+            background-color: {bg_color};
+            color: {text_color};
+        }}
+        /* 调整 Markdown 正文大小 */
+        .stMarkdown p, .stMarkdown li {{
+            font-size: {font_size}px !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
 
         st.divider()
         if st.button("退出登录", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
 
+    # --- 后台模型路由 ---
+    if "日常" in mode_select:
+        real_model = "gemini-2.0-flash-lite-preview-02-05"
+        active_prompt = PROMPT_DAILY
+        btn_label = "🚀 开始评估 (获取手机参数)"
+        status_msg = "✨ 正在生成手机修图方案..."
+    else:
+        real_model = "gemini-2.5-flash"
+        active_prompt = PROMPT_PRO
+        btn_label = "💎 深度解析 (获取专业面板)"
+        status_msg = "🧠 正在进行商业级光影分析..."
+
     # --- 主界面 ---
     st.title("🍃 一叶摇风 | 影像私教")
     
-    # 顶部状态条 (增强用户感知)
+    # 顶部状态条
     if "日常" in mode_select:
-        st.success("当前模式：**日常记录** | 适用：手机摄影、朋友圈打卡、醒图/美图秀秀用户")
+        st.success("当前模式：**日常记录** | 适用：手机摄影、朋友圈打卡")
     else:
-        st.info("当前模式：**专业创作** | 适用：单反/微单摄影、商业修图、Lightroom/CaptureOne用户")
+        st.info("当前模式：**专业创作** | 适用：单反/微单摄影、商业修图")
 
-    # --- 交互区 (Tabs) ---
     tab1, tab2 = st.tabs(["📂 上传照片", "📷 现场拍摄"])
-    
     img_file = None
     
     with tab1:
         f = st.file_uploader("支持 JPG/PNG/WEBP", type=["jpg","png","webp"], key="up_file")
         if f: img_file = f
-            
     with tab2:
         c = st.camera_input("点击拍摄", key="cam_file")
         if c: img_file = c
@@ -201,19 +235,26 @@ def main_app():
         st.divider()
         try:
             image = Image.open(img_file).convert('RGB')
-            
-            # 布局：左图右文
             c1, c2 = st.columns([1, 1.2])
             
             with c1:
                 st.image(image, caption="待分析影像", use_container_width=True)
+                
+                # === ✨ 新增功能：显示 EXIF 信息 (专业感拉满) ===
+                if show_exif_info:
+                    exif = get_exif_data(image)
+                    if exif:
+                        with st.expander("📷 查看照片详细参数 (ISO/快门/光圈)"):
+                            st.json(exif)
+                    else:
+                        st.caption("ℹ️ 未检测到拍摄参数 (可能是微信传输或截图)")
             
             with c2:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：我想修出日系通透感...")
                 
                 if st.button(btn_label, type="primary", use_container_width=True):
                     with st.status(status_msg, expanded=True) as s:
-                        # 记录日志
+                        # 记录干净的日志
                         print(f"ACTION: User [{st.session_state.user_phone}] - Mode [{mode_select}]")
                         
                         model = genai.GenerativeModel(real_model, system_instruction=active_prompt)
@@ -223,7 +264,16 @@ def main_app():
                         response = model.generate_content([msg, image])
                         s.update(label="✅ 分析完成", state="complete", expanded=False)
                     
+                    # 展示结果
                     st.markdown(response.text)
+                    
+                    # === ✨ 新增功能：下载报告 ===
+                    st.download_button(
+                        label="📥 下载分析报告",
+                        data=response.text,
+                        file_name="一叶摇风_修图建议.md",
+                        mime="text/markdown"
+                    )
                     
         except Exception as e:
             st.error("分析中断")
