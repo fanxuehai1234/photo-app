@@ -150,4 +150,21 @@ def main():
                         req = "请分析这张图片。"
                         if user_input: req += f" 用户备注：{user_input}"
                         
-                        response = model.generate_content([req, image_
+                        response = model.generate_content([req, image_data])
+                        
+                        status.update(label="✅ 分析完成", state="complete", expanded=False)
+                    
+                    # 直接展示结果，因为我们在提示词里规定了第一行就是评分
+                    st.markdown(response.text)
+                    
+                except Exception as e:
+                    st.error("连接中断")
+                    if "404" in str(e):
+                        st.warning("错误：模型不可用，请尝试切换模式。")
+                    elif "429" in str(e):
+                        st.warning("提示：请求过多，请休息一分钟再试。")
+                    else:
+                        st.warning(str(e))
+
+if __name__ == "__main__":
+    main()
