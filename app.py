@@ -1,61 +1,83 @@
 import streamlit as st
 import google.generativeai as genai
-import sys
+from PIL import Image
 
-st.set_page_config(page_title="故障诊断模式", page_icon="🛠️")
-st.title("🛠️ BayernGomez 服务器诊断报告")
+# 1. 页面设置
+st.set_page_config(page_title="BayernGomez 修图大师", page_icon="🎨")
 
-# 1. 检查 Key 是否存在
+# 2. 读取 Key
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
-    st.success("✅ 1. API Key 已从云端读取")
 except:
-    st.error("❌ 1. 未检测到 Key！请检查 Secrets 设置")
+    st.error("⚠️ 错误：请在 Streamlit 后台配置 GOOGLE_API_KEY。")
     st.stop()
 
-# 2. 检查工具包版本
-st.write("---")
-st.subheader("2. 环境版本检查")
-st.write(f"- **Python 版本:** `{sys.version.split()[0]}`")
-try:
-    lib_version = genai.__version__
-    st.write(f"- **Google工具包版本:** `{lib_version}`")
-    
-    # 判断版本是否达标
-    ver_parts = lib_version.split('.')
-    if int(ver_parts[1]) >= 6: # 检查是否大于 0.6
-        st.success("✅ 工具包版本合格 (支持 1.5 Flash)")
-    else:
-        st.error(f"❌ 工具包版本太旧 ({lib_version})！这就是报错的原因！")
-except Exception as e:
-    st.error(f"❌ 无法检测版本: {e}")
+# 3. 核心提示词
+SYSTEM_PROMPT = """
+你是一位专业的修图大师 BayernGomez。
+请从构图、光影、色彩情感等方面分析用户上传的照片。
+并给出具体的后期修图参数建议（例如：高光-10，阴影+20，色温变暖）。
+如果用户有特殊要求，请优先满足。
+"""
 
-# 3. 检查您的 Key 能看到哪些模型
-st.write("---")
-st.subheader("3. 账号权限检查 (列出所有可用模型)")
-
-if st.button("🔍 点击扫描可用模型"):
-    try:
-        genai.configure(api_key=api_key)
-        models = list(genai.list_models())
+def main():
+    with st.sidebar:
+        st.success("✅ 云端大脑已连接")
+        st.info("无需翻墙 · 国内直连可用")
         
-        found_flash = False
-        st.write("您的 Key 可以调用以下模型：")
+        # === 关键修改：使用您账号里真实存在的模型 ===
+        model_label = st.selectbox("选择大脑", [
+            "Gemini 2.0 Flash Lite (极速·高额度)", 
+            "Gemini 2.0 Pro (超强·画质好)",
+            "Gemini 2.5 Flash (神秘新版)"
+        ])
         
-        # 遍历打印
-        for m in models:
-            if "generateContent" in m.supported_generation_methods:
-                st.code(m.name) # 显示模型真实名字
-                if "gemini-1.5-flash" in m.name:
-                    found_flash = True
-        
-        st.write("---")
-        if found_flash:
-            st.success("✅ 诊断结果：您的账号拥有 1.5 Flash 权限！")
-            st.info("如果这里显示有权限但之前报错，说明是代码写法问题。")
+        # === 映射到您截图里的真实代码 ===
+        if "Lite" in model_label:
+            # 这是您截图里有的模型，速度最快，额度通常最高
+            real_model_name = "gemini-2.0-flash-lite-preview-02-05"
+        elif "Pro" in model_label:
+            # 2.0 Pro 版本
+            real_model_name = "gemini-2.0-pro-exp-02-05"
         else:
-            st.error("❌ 诊断结果：您的账号里找不到 1.5 Flash！")
-            st.warning("可能原因：\n1. 您的 Google Cloud 项目没有开启相关权限。\n2. 您的 API Key 创建时选错了项目。\n3. Google 对您的地区进行了限制。")
+            # 您截图里的 2.5 版本
+            real_model_name = "gemini-2.5-flash"
+        
+        st.caption(f"当前调用内核: `{real_model_name}`")
+
+    st.title("🎨 BayernGomez 智能修图大师")
+    st.write("已启用 Google 最新一代 2.0/2.5 模型！")
+
+    uploaded_file = st.file_uploader("点击上传照片...", type=["jpg", "jpeg", "png"])
+
+    if uploaded_file:
+        try:
+            image = Image.open(uploaded_file)
+            st.image(image, caption='预览', use_container_width=True)
             
-    except Exception as e:
-        st.error(f"❌ 扫描失败，原因：{e}")
+            user_req = st.text_input("有什么特殊需求？(例如：日系小清新)")
+
+            if st.button("🚀 开始智能分析", key="run_btn"):
+                try:
+                    with st.spinner(f'🤖 {model_label} 正在思考中...'):
+                        genai.configure(api_key=api_key)
+                        model = genai.GenerativeModel(model_name=real_model_name, system_instruction=SYSTEM_PROMPT)
+                        
+                        prompt = "请分析这张图片。"
+                        if user_req: prompt += f" 用户需求：{user_req}"
+                        
+                        response = model.generate_content([prompt, image])
+                        st.success("✅ 分析完成！")
+                        st.markdown(response.text)
+                except Exception as e:
+                    st.error("❌ 调用失败")
+                    st.warning(f"错误信息：{e}")
+                    if "404" in str(e):
+                        st.info("提示：如果报404，请在左侧切换另一个模型试试。")
+                    elif "429" in str(e):
+                        st.info("提示：当前模型额度已满，请切换到 'Flash Lite' 试试。")
+        except Exception as img_err:
+            st.error(f"图片读取失败: {img_err}")
+
+if __name__ == "__main__":
+    main()
