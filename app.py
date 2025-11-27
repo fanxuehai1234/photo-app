@@ -2,30 +2,14 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 
-# 1. 页面设置
+# 1. 页面基础设置
 st.set_page_config(page_title="BayernGomez 修图大师", page_icon="🎨")
 
 # 2. 自动读取 Key
 try:
-    if st.button("🚀 开始智能分析"):
-            try:
-                with st.spinner(f'🤖 正在使用 {real_model_name} 思考中...'):
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel(model_name=real_model_name, system_instruction=SYSTEM_PROMPT)
-                    
-                    prompt = "请分析这张图片。"
-                    if user_req: prompt += f" 用户需求：{user_req}"
-                    
-                    response = model.generate_content([prompt, image])
-                    st.success("✅ 分析完成！")
-                    st.markdown(response.text)
-            except Exception as e:
-                # === 修改这里：不再瞎猜是2.0的问题，直接把真实错误打印出来 ===
-                st.error(f"❌ 调用失败")
-                st.warning(f"错误详情：{e}")
-                st.info("💡 排查建议：\n1. 如果显示 429 Quota exceeded，说明该模型免费额度已用完，请切换到 1.5-flash 试试。\n2. 2.0 模型目前对免费账号极不稳定，建议暂用 1.5。")
+    api_key = st.secrets["GOOGLE_API_KEY"]
 except:
-    st.error("⚠️ 错误：请在 Streamlit 后台配置 GOOGLE_API_KEY。")
+    st.error("⚠️ 严重错误：未检测到 Key！请在 Streamlit 后台 Settings -> Secrets 中配置。")
     st.stop()
 
 # 3. 核心提示词
@@ -37,57 +21,70 @@ SYSTEM_PROMPT = """
 """
 
 def main():
+    # --- 侧边栏设置 ---
     with st.sidebar:
         st.success("✅ 云端大脑已连接")
         st.info("无需翻墙 · 国内直连可用")
         
-        # === 升级模型列表 ===
-        # 这里我们换上了目前真正最强的 2.0 和 1.5 Pro
-        model_name = st.selectbox("选择大脑", [
-            "gemini-2.0-flash-exp (最新 v2.0)", 
-            "gemini-1.5-pro (最强 v1.5)",
-            "gemini-1.5-flash (极速 v1.5)"
+        # 只保留两个最稳定的 1.5 模型
+        model_option = st.selectbox("选择大脑", [
+            "gemini-1.5-flash (极速版 - 推荐)", 
+            "gemini-1.5-pro (增强版 - 更聪明)"
         ])
         
-        # 映射逻辑
-        if "2.0" in model_name:
-            real_model_name = "gemini-2.0-flash-exp"
-        elif "pro" in model_name:
+        # 转换模型名称
+        if "pro" in model_option:
             real_model_name = "gemini-1.5-pro"
         else:
             real_model_name = "gemini-1.5-flash"
-        # ===================
 
+    # --- 主界面 ---
     st.title("🎨 BayernGomez 智能修图大师")
-    st.write("上传照片，AI 帮您分析修图思路！")
+    st.markdown("上传照片，AI 帮您分析修图思路！")
 
+    # 上传组件
     uploaded_file = st.file_uploader("点击上传照片...", type=["jpg", "jpeg", "png"])
 
     if uploaded_file:
-        image = Image.open(uploaded_file)
-        st.image(image, caption='预览', use_container_width=True)
-        
-        user_req = st.text_input("有什么特殊需求？(例如：日系小清新)")
+        # 显示图片
+        try:
+            image = Image.open(uploaded_file)
+            st.image(image, caption='预览', use_container_width=True)
+            
+            # 用户需求输入
+            user_req = st.text_input("有什么特殊需求？(例如：日系小清新)")
 
-        if st.button("🚀 开始智能分析"):
-            try:
-                with st.spinner(f'🤖 正在使用 {real_model_name} 思考中...'):
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel(model_name=real_model_name, system_instruction=SYSTEM_PROMPT)
-                    
-                    prompt = "请分析这张图片。"
-                    if user_req: prompt += f" 用户需求：{user_req}"
-                    
-                    response = model.generate_content([prompt, image])
-                    st.success("✅ 分析完成！")
-                    st.markdown(response.text)
-            except Exception as e:
-                # 如果 2.0 报错，通常是因为版本太新，提示用户
-                if "404" in str(e):
-                    st.error("出错啦！可能是 2.0 模型还在测试中，请在左侧切换回 1.5-pro 试试。")
-                else:
-                    st.error(f"出错了：{e}")
+            # 按钮 (加了 key 防止报错)
+            if st.button("🚀 开始智能分析", key="run_btn"):
+                try:
+                    with st.spinner('🤖 AI 正在思考中...'):
+                        # 配置 Key
+                        genai.configure(api_key=api_key)
+                        
+                        # 初始化模型
+                        model = genai.GenerativeModel(model_name=real_model_name, system_instruction=SYSTEM_PROMPT)
+                        
+                        # 准备提示词
+                        prompt = "请分析这张图片。"
+                        if user_req: prompt += f" 用户需求：{user_req}"
+                        
+                        # 发送请求
+                        response = model.generate_content([prompt, image])
+                        
+                        # 显示结果
+                        st.success("✅ 分析完成！")
+                        st.markdown(response.text)
+                        
+                except Exception as e:
+                    st.error("❌ 分析失败")
+                    # 智能判断错误类型
+                    err_msg = str(e)
+                    if "429" in err_msg or "Quota" in err_msg:
+                        st.warning("原因：免费额度已用完 (429 Error)。请明天再试，或切换回 '1.5-flash' 模型。")
+                    else:
+                        st.warning(f"详细错误信息：{err_msg}")
+        except Exception as img_error:
+            st.error(f"图片加载失败，请换一张图试试。错误：{img_error}")
 
 if __name__ == "__main__":
-
     main()
