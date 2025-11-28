@@ -17,59 +17,12 @@ logging.getLogger('streamlit').setLevel(logging.ERROR)
 
 st.set_page_config(
     page_title="智影 | AI 影像顾问", 
-    page_icon="🌿",  # P1: 图标改为绿色叶子
+    page_icon="🌿", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ================= 1. CSS 深度定制 (解决UI/UX问题) =================
-st.markdown("""
-    <style>
-    /* P3: 去除 Footer */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* P4: 消除手机端顶部大片留白 */
-    .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-    }
-    
-    /* P15: 强制侧边栏按钮可见 (自定义颜色) */
-    button[kind="header"] {
-        background-color: transparent !important;
-        color: #4CAF50 !important; /* 绿色按钮 */
-    }
-    
-    /* P14: 深色模式适配 - 强制按钮和文字可见 */
-    .stButton>button {
-        border-radius: 8px;
-        font-weight: bold;
-    }
-    
-    /* 结果卡片美化 */
-    .result-card {
-        background-color: #f8f9fa;
-        border-left: 5px solid #4CAF50;
-        padding: 20px;
-        border-radius: 8px;
-        margin-top: 10px;
-        margin-bottom: 20px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    }
-    
-    /* 深色模式下的卡片适配 */
-    @media (prefers-color-scheme: dark) {
-        .result-card {
-            background-color: #262730;
-            color: white;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# ================= 2. 状态初始化 (防崩 + 缓存核心) =================
+# ================= 1. 状态初始化 (包含深色模式) =================
 def init_session_state():
     defaults = {
         'logged_in': False,
@@ -78,9 +31,10 @@ def init_session_state():
         'history': [],
         'favorites': [],
         'font_size': 16,
-        'current_report': None,   # 缓存当前分析结果 (P7, P11 修复核心)
-        'current_image': None,    # 缓存当前图片
-        'processing': False
+        'dark_mode': False,       # 👈 找回了深色模式状态
+        'current_report': None,
+        'current_image': None,
+        'current_req': None
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -88,17 +42,90 @@ def init_session_state():
 
 init_session_state()
 
-# ================= 3. 工具函数库 =================
+# ================= 2. 动态 CSS (换肤引擎) =================
+def inject_custom_css():
+    # 根据状态定义颜色变量
+    if st.session_state.dark_mode:
+        # 深色主题
+        main_bg = "#121212"
+        text_col = "#E0E0E0"
+        card_bg = "#1E1E1E"
+        sidebar_bg = "#262626"
+        border_col = "#333"
+        shadow_col = "rgba(255,255,255,0.05)"
+    else:
+        # 浅色主题
+        main_bg = "#FFFFFF"
+        text_col = "#333333"
+        card_bg = "#f8f9fa"
+        sidebar_bg = "#F0F2F6"
+        border_col = "#e0e0e0"
+        shadow_col = "rgba(0,0,0,0.05)"
 
-# 图片转 Base64 (用于 P8, P10 在历史/报告中显示图片)
+    font_px = st.session_state.font_size
+
+    st.markdown(f"""
+    <style>
+    /* 全局去噪 */
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
+    header {{visibility: hidden;}}
+    
+    /* 1. 全局背景与文字 */
+    .stApp {{
+        background-color: {main_bg};
+        color: {text_col};
+        transition: all 0.3s ease;
+    }}
+    
+    /* 2. 侧边栏背景 */
+    section[data-testid="stSidebar"] {{
+        background-color: {sidebar_bg};
+        display: block !important;
+    }}
+    
+    /* 3. 结果卡片美化 */
+    .result-card {{
+        background-color: {card_bg};
+        color: {text_col};
+        border-left: 5px solid #4CAF50;
+        padding: 25px;
+        border-radius: 10px;
+        margin-top: 15px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 10px {shadow_col};
+        border: 1px solid {border_col};
+    }}
+    
+    /* 4. 字体大小控制 (动态) */
+    .stMarkdown p, .stMarkdown li, .stMarkdown div {{
+        font-size: {font_px}px !important;
+        line-height: 1.7 !important;
+    }}
+    
+    /* 5. 手机端顶部优化 */
+    .block-container {{
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }}
+    
+    /* 6. 侧边栏按钮颜色强制修正 */
+    button[kind="header"] {{
+        color: #4CAF50 !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+# 立即注入样式
+inject_custom_css()
+
+# ================= 3. 工具函数库 =================
 def img_to_base64(image):
     try:
         buffered = io.BytesIO()
-        # 压缩图片以节省资源
         image.save(buffered, format="JPEG", quality=50)
         return base64.b64encode(buffered.getvalue()).decode()
-    except:
-        return ""
+    except: return ""
 
 def configure_random_key():
     try:
@@ -123,7 +150,6 @@ def get_exif_data(image):
     except: pass
     return exif_data
 
-# 生成 HTML 报告 (P10: 加入图片)
 def create_html_report(text, user_req, img_base64):
     img_tag = f'<img src="data:image/jpeg;base64,{img_base64}" style="max-width:100%; border-radius:10px; margin-bottom:20px;">' if img_base64 else ""
     return f"""
@@ -141,21 +167,16 @@ def create_html_report(text, user_req, img_base64):
     </body></html>
     """
 
-# ================= 4. 登录页 (P1, P3, P4 优化) =================
+# ================= 4. 登录页 =================
 def show_login_page():
-    # 调整比例，适应手机
     col_poster, col_login = st.columns([1, 1])
-    
     with col_poster:
-        # P1: 清新绿色的图
         st.image("https://images.unsplash.com/photo-1472214103451-9374bd1c798e?q=80&w=1000&auto=format&fit=crop", 
                  use_container_width=True)
 
     with col_login:
         st.title("🌿 智影")
         st.markdown("##### 您的 24小时 AI 摄影私教")
-        
-        # 功能卡片
         st.info("✨ **一键评分** | 📊 **参数直出** | 🎓 **大师指导**")
         
         with st.container(border=True):
@@ -164,7 +185,6 @@ def show_login_page():
             code_input = st.text_input("激活码 / Key", placeholder="请输入专属 Key", type="password")
             
             if st.button("立即登录", type="primary", use_container_width=True):
-                # 登录逻辑...
                 try:
                     valid_accounts = st.secrets["VALID_ACCOUNTS"]
                     login_success = False
@@ -184,7 +204,8 @@ def show_login_page():
                         st.session_state.logged_in = True
                         st.session_state.user_phone = phone_input
                         st.session_state.expire_date = expire_date_str
-                        # P16: 格式化日志，方便查看
+                        st.session_state.history = []
+                        st.session_state.favorites = []
                         print(f"[MONITOR] LOGIN SUCCESS | User: {phone_input}")
                         st.rerun()
                     else:
@@ -196,38 +217,31 @@ def show_login_page():
         with st.expander("📲 安装教程"):
             st.markdown("iPhone: Safari分享 -> 添加到主屏幕\nAndroid: Chrome菜单 -> 添加到主屏幕")
 
-# ================= 5. 主程序 (核心修复) =================
+# ================= 5. 主程序 (完整版) =================
 def show_main_app():
     if not configure_random_key():
         st.stop()
 
-    # --- 侧边栏 ---
     with st.sidebar:
         st.title("🌿 用户中心")
         st.caption(f"用户: {st.session_state.user_phone} | 有效期: {st.session_state.expire_date}")
         
         st.markdown("---")
-        mode_select = st.radio(
-            "模式选择:", 
-            ["📷 日常快评", "🧐 专业艺术"],
-            index=0,
-            horizontal=True
-        )
+        mode_select = st.radio("模式选择:", ["📷 日常快评", "🧐 专业艺术"], index=0)
 
         st.markdown("---")
-        # P8: 历史记录优化 (带图)
-        with st.expander("🕒 历史记录 (最近5条)", expanded=False):
+        # 历史记录
+        with st.expander("🕒 历史记录", expanded=False):
             if not st.session_state.history:
                 st.caption("暂无记录")
             else:
                 for idx, item in enumerate(reversed(st.session_state.history)):
                     with st.popover(f"📄 {item['time']} - {item['mode']}"):
-                        # 显示缩略图
                         if item.get('img_base64'):
-                            st.markdown(f'<img src="data:image/jpeg;base64,{item["img_base64"]}" width="100%">', unsafe_allow_html=True)
+                            st.markdown(f'<img src="data:image/jpeg;base64,{item["img_base64"]}" width="100%" style="border-radius:5px;">', unsafe_allow_html=True)
                         st.markdown(item['content'])
 
-        # 收藏夹 (带图)
+        # 收藏夹
         with st.expander("❤️ 我的收藏", expanded=False):
             if not st.session_state.favorites:
                 st.caption("暂无收藏")
@@ -235,25 +249,32 @@ def show_main_app():
                 for idx, item in enumerate(st.session_state.favorites):
                     with st.popover(f"⭐ 收藏 #{idx+1}"):
                         if item.get('img_base64'):
-                            st.markdown(f'<img src="data:image/jpeg;base64,{item["img_base64"]}" width="100%">', unsafe_allow_html=True)
+                            st.markdown(f'<img src="data:image/jpeg;base64,{item["img_base64"]}" width="100%" style="border-radius:5px;">', unsafe_allow_html=True)
                         st.markdown(item['content'])
 
         st.markdown("---")
-        with st.expander("🛠️ 设置"):
-            # P11: 调整字体不再刷新结果 (因为它存入了session_state)
-            font_size = st.slider("字体大小", 14, 24, st.session_state.font_size)
-            if font_size != st.session_state.font_size:
-                st.session_state.font_size = font_size
+        # === ⚙️ 个性化设置 (功能已找回！) ===
+        with st.expander("🛠️ 个性化设置", expanded=True):
+            # 1. 字体大小
+            new_size = st.slider("Aa 字体大小", 14, 24, st.session_state.font_size)
+            if new_size != st.session_state.font_size:
+                st.session_state.font_size = new_size
                 st.rerun()
-            show_exif_info = st.checkbox("显示 EXIF 参数", value=True)
-
-        st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
+            
+            # 2. 深色模式 (它回来了！)
+            new_dark = st.toggle("🌙 深色模式", value=st.session_state.dark_mode)
+            if new_dark != st.session_state.dark_mode:
+                st.session_state.dark_mode = new_dark
+                st.rerun() # 立即刷新应用 CSS
+                
+            # 3. EXIF
+            show_exif_info = st.checkbox("显示参数 (EXIF)", value=True)
 
         if st.button("退出登录", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
 
-    # --- 提示词系统 (P13: 一致性优化在后面) ---
+    # --- 提示词系统 ---
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
         active_prompt = """你是一位亲切的摄影博主“智影”。
@@ -298,9 +319,7 @@ def show_main_app():
     # --- 主界面 ---
     st.title("🌿 智影 | 影像私教")
     
-    # P6: 图片输入逻辑重写 - 互斥显示
-    # 使用 session_state 跟踪最后的图片来源
-    
+    # 顶部 Tab 切换
     tab1, tab2 = st.tabs(["📂 上传照片", "📷 现场拍摄"])
     
     with tab1:
@@ -313,13 +332,13 @@ def show_main_app():
         if c: 
             st.session_state.current_image = Image.open(c).convert('RGB')
 
-    # P12: 重置功能优化
+    # 清空重置按钮
     if st.button("🗑️ 清空重置 / 换张图", use_container_width=True):
         st.session_state.current_image = None
         st.session_state.current_report = None
         st.rerun()
 
-    # --- 分析逻辑 ---
+    # --- 结果展示区 ---
     if st.session_state.current_image:
         st.divider()
         c1, c2 = st.columns([1, 1.2])
@@ -332,16 +351,13 @@ def show_main_app():
                     with st.expander("📷 拍摄参数"): st.json(exif)
         
         with c2:
-            # 只有当没有报告时，才显示输入框和按钮
             if not st.session_state.current_report:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：想修出日系感...")
                 
                 if st.button("🚀 开始评估", type="primary", use_container_width=True):
                     with st.status(status_msg, expanded=True) as s:
-                        # P16: 监控日志
                         print(f"[MONITOR] ACTION | User: {st.session_state.user_phone} | Mode: {mode_select}")
                         
-                        # P13: 设置 temperature=0.1 保证一致性
                         generation_config = genai.types.GenerationConfig(temperature=0.1)
                         model = genai.GenerativeModel(real_model, system_instruction=active_prompt)
                         
@@ -350,28 +366,24 @@ def show_main_app():
                         
                         response = model.generate_content([msg, st.session_state.current_image], generation_config=generation_config)
                         
-                        # 将结果存入 Session State (P7, P11 修复核心)
                         st.session_state.current_report = response.text
-                        st.session_state.current_req = user_req # 存备注
+                        st.session_state.current_req = user_req
                         s.update(label="✅ 分析完成", state="complete", expanded=False)
-                        st.rerun() # 强制刷新显示结果
+                        st.rerun()
             
-            # 如果有报告，直接显示报告 (即使点击收藏/调整字体也不会消失)
+            # 显示报告
             if st.session_state.current_report:
+                # 这里的 class="result-card" 会根据上面的 CSS 自动变色（深/浅）
                 st.markdown(f'<div class="result-card">{st.session_state.current_report}</div>', unsafe_allow_html=True)
-                st.markdown(st.session_state.current_report)
                 
-                # 工具栏
                 btn_c1, btn_c2 = st.columns(2)
                 with btn_c1:
-                    # P10: 下载含图报告
                     img_b64 = img_to_base64(st.session_state.current_image)
                     html = create_html_report(st.session_state.current_report, st.session_state.get('current_req', ''), img_b64)
                     st.download_button("📥 下载报告", html, file_name="智影报告.html", mime="text/html", use_container_width=True)
                 
                 with btn_c2:
                     if st.button("❤️ 加入收藏", use_container_width=True):
-                        # P8: 存入带图的历史
                         img_b64 = img_to_base64(st.session_state.current_image)
                         record = {
                             "time": datetime.now().strftime("%H:%M"),
@@ -379,12 +391,9 @@ def show_main_app():
                             "content": st.session_state.current_report,
                             "img_base64": img_b64
                         }
-                        # 同时存入历史和收藏
                         st.session_state.favorites.append(record)
-                        # 更新历史记录
                         st.session_state.history.append(record)
                         if len(st.session_state.history) > 5: st.session_state.history.pop(0)
-                        
                         st.toast("已收藏！", icon="⭐")
 
 # ================= 6. 入口 =================
