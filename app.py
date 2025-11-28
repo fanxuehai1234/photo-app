@@ -11,13 +11,11 @@ import base64
 import logging
 import sys
 
-# ================= 0. 核心配置 & 日志系统 (关键修复) =================
-# 1. 屏蔽干扰警告
+# ================= 0. 核心配置 =================
 warnings.filterwarnings("ignore")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# 2. 配置专业日志系统 (解决后台不显示的问题)
-# 强制让日志输出到控制台，并显示时间
+# 日志系统
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(message)s',
@@ -32,14 +30,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================= 1. CSS 美化 =================
+# ================= 1. CSS 深度美化 =================
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    .stDeployButton {display:none;}
-    div[data-testid="stStatusWidget"] {visibility: hidden;}
     div[class^="viewerBadge"] {display: none !important;} 
     
     .block-container {
@@ -151,21 +147,32 @@ def show_logo(width=None):
     if os.path.exists("icon.png"):
         st.image("icon.png", width=width)
     else:
-        st.warning("⚠️ icon.png 未找到")
+        # 如果还没上传，就什么都不显示，避免报错
+        pass
 
-# ================= 4. 登录页 =================
+# ================= 4. 登录页 (整容级优化) =================
 def show_login_page():
-    col_poster, col_login = st.columns([1, 1])
+    col_poster, col_login = st.columns([1.2, 1]) # 左侧稍微宽一点
     
+    # --- 左侧：放置一张真正的高级摄影图 (Atmosphere) ---
     with col_poster:
-        if os.path.exists("icon.png"):
-            st.image("icon.png", use_container_width=True)
-        else:
-            st.image("https://images.unsplash.com/photo-1552168324-d612d77725e3?q=80&w=1000", use_container_width=True)
+        # 这是一张极简的绿叶/光影图，呼应"智影"主题
+        st.image("https://images.unsplash.com/photo-1470104240373-0c33a30925e1?q=80&w=1000&auto=format&fit=crop", 
+                 use_container_width=True)
 
+    # --- 右侧：Logo + 登录框 ---
     with col_login:
-        st.title("🌿 智影")
-        st.markdown("##### 您的 24小时 AI 摄影私教")
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # ★★★ 修复：Logo 和 标题 并排显示 ★★★
+        c_logo, c_title = st.columns([0.2, 0.8])
+        with c_logo:
+            show_logo(width=70) # 小巧精致的Logo
+        with c_title:
+            st.title("智影")
+            
+        st.markdown("#### 您的 24小时 AI 摄影私教")
+        
         st.info("✨ **一键评分** | 📊 **参数直出** | 🎓 **大师指导**")
         
         with st.container(border=True):
@@ -195,7 +202,6 @@ def show_login_page():
                         st.session_state.expire_date = expire_date_str
                         if 'current_image' in st.session_state: del st.session_state['current_image']
                         
-                        # ⭐ 使用 logger 替代 print，确保后台能看到
                         logger.info(f"⭐⭐⭐ [MONITOR] LOGIN SUCCESS | User: {phone_input}")
                         st.rerun()
                     else:
@@ -221,8 +227,11 @@ def show_main_app():
         </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
-        show_logo(width=100)
-        st.title("用户中心")
+        # 侧边栏也加上 Logo
+        c_side_logo, c_side_title = st.columns([0.3, 0.7])
+        with c_side_logo: show_logo(width=50)
+        with c_side_title: st.markdown("### 智影用户")
+        
         st.info(f"👤 {st.session_state.user_phone}")
         st.caption(f"有效期: {st.session_state.expire_date}")
         
@@ -274,7 +283,7 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V23.0 Monitor")
+        st.caption("Ver: V24.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
@@ -323,8 +332,9 @@ def show_main_app():
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
         banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
 
-    col_h1, col_h2 = st.columns([0.2, 2])
-    with col_h1: show_logo()
+    # 主界面 Logo
+    col_h1, col_h2 = st.columns([0.15, 2])
+    with col_h1: show_logo(width=60)
     with col_h2: st.title("智影 | 影像私教")
     
     st.markdown(f"""
@@ -364,7 +374,6 @@ def show_main_app():
                 
                 if st.button("🚀 开始评估", type="primary", use_container_width=True):
                     with st.status(status_msg, expanded=True) as s:
-                        # ⭐ 使用 logger 输出日志
                         logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone} | Mode: {mode_select}")
                         
                         generation_config = genai.types.GenerationConfig(temperature=0.1)
