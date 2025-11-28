@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 st.set_page_config(
     page_title="智影 | AI 影像顾问", 
-    page_icon="icon.png", # 👈 全局使用新的石头图标
+    page_icon="icon.png",  # 浏览器标签依然用那个炫酷的石头图标
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -141,18 +141,19 @@ def img_to_base64(image):
         return base64.b64encode(buffered.getvalue()).decode()
     except: return ""
 
-# 通用显示图标函数
-def show_icon(icon_name, width=None):
-    if os.path.exists(icon_name):
-        st.image(icon_name, width=width)
+# 统一显示Logo函数：强制读取 leaf.png
+def show_leaf_logo(width=None):
+    if os.path.exists("leaf.png"):
+        st.image("leaf.png", width=width)
+    else:
+        # 如果还没上传，显示文字占位
+        st.write("🌿")
 
-# ================= 4. 登录页 (定制化) =================
+# ================= 4. 登录页 =================
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     
     with col_poster:
-        # ★★★ 左侧：换成高大上的相机专业图 ★★★
-        # 这是一张黑色背景、充满质感的相机和镜头图
         st.image("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=1000&auto=format&fit=crop", 
                  use_container_width=True)
 
@@ -161,8 +162,8 @@ def show_login_page():
         
         c_logo, c_title = st.columns([0.2, 0.8])
         with c_logo:
-            # ★★★ 右侧小图标：专门显示叶子 (leaf.png) ★★★
-            show_icon("leaf.png", width=70) 
+            # ★★★ 登录页：显示新叶子 ★★★
+            show_leaf_logo(width=70) 
         with c_title:
             st.title("智影")
             
@@ -220,9 +221,9 @@ def show_main_app():
         </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
-        # ★★★ 侧边栏：显示新的石头图标 (icon.png) ★★★
+        # ★★★ 侧边栏：显示新叶子 ★★★
         c_side_logo, c_side_title = st.columns([0.3, 0.7])
-        with c_side_logo: show_icon("icon.png", width=50)
+        with c_side_logo: show_leaf_logo(width=50)
         with c_side_title: st.markdown("### 智影用户")
         
         st.info(f"👤 {st.session_state.user_phone}")
@@ -272,7 +273,7 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V25.0 Final")
+        st.caption("Ver: V26.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
@@ -321,9 +322,9 @@ def show_main_app():
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
         banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
 
-    # ★★★ 主界面 Logo：显示新的石头图标 (icon.png) ★★★
+    # ★★★ 主界面 Logo：显示新叶子 ★★★
     col_h1, col_h2 = st.columns([0.15, 2])
-    with col_h1: show_icon("icon.png", width=60)
+    with col_h1: show_leaf_logo(width=60)
     with col_h2: st.title("智影 | 影像私教")
     
     st.markdown(f"""
