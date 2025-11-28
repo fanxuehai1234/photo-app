@@ -8,23 +8,33 @@ import random
 import os
 import io
 import base64
+import logging
+import sys
 
-# ================= 0. 核心配置 =================
-# 屏蔽警告，但保留正常 print 输出
+# ================= 0. 核心配置 & 日志系统 (关键修复) =================
+# 1. 屏蔽干扰警告
 warnings.filterwarnings("ignore")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+# 2. 配置专业日志系统 (解决后台不显示的问题)
+# 强制让日志输出到控制台，并显示时间
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+
 st.set_page_config(
     page_title="智影 | AI 影像顾问", 
-    page_icon="icon.png",  # 👈 修复：这里必须对应您上传的文件名
+    page_icon="icon.png", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ================= 1. CSS 暴力美化 (去除所有水印) =================
+# ================= 1. CSS 美化 =================
 st.markdown("""
     <style>
-    /* 隐藏顶部红线、汉堡菜单、底部Footer、右下角水印 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -32,18 +42,15 @@ st.markdown("""
     div[data-testid="stStatusWidget"] {visibility: hidden;}
     div[class^="viewerBadge"] {display: none !important;} 
     
-    /* 手机端顶部留白消除 */
     .block-container {
-        padding-top: 0rem !important;
+        padding-top: 1rem !important;
         padding-bottom: 2rem !important;
     }
     
-    /* 强制侧边栏显示 (防止手机端误触关闭) */
     section[data-testid="stSidebar"] {
         display: block;
     }
     
-    /* 结果卡片美化 */
     .result-card {
         background-color: #f8f9fa;
         border-left: 5px solid #4CAF50;
@@ -54,7 +61,6 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     
-    /* 按钮样式增强 */
     .stButton>button {
         font-weight: bold;
         border-radius: 8px;
@@ -62,7 +68,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 2. 状态初始化 & 缓存清理 =================
+# ================= 2. 状态初始化 =================
 def init_session_state():
     defaults = {
         'logged_in': False,
@@ -81,20 +87,15 @@ def init_session_state():
 
 init_session_state()
 
-# --- 核心修复：图片源互斥清理函数 ---
-# 当用户想要上传时，强制清除相机的缓存
+# 图片互斥清理逻辑
 def clear_camera():
-    if 'cam_file' in st.session_state:
-        del st.session_state['cam_file']
+    if 'cam_file' in st.session_state: del st.session_state['cam_file']
     st.session_state.current_report = None
 
-# 当用户想要拍照时，强制清除上传的缓存
 def clear_upload():
-    if 'up_file' in st.session_state:
-        del st.session_state['up_file']
+    if 'up_file' in st.session_state: del st.session_state['up_file']
     st.session_state.current_report = None
 
-# 全局重置
 def reset_all():
     if 'cam_file' in st.session_state: del st.session_state['cam_file']
     if 'up_file' in st.session_state: del st.session_state['up_file']
@@ -146,17 +147,25 @@ def img_to_base64(image):
         return base64.b64encode(buffered.getvalue()).decode()
     except: return ""
 
-# ================= 4. 登录页 (美化) =================
+def show_logo(width=None):
+    if os.path.exists("icon.png"):
+        st.image("icon.png", width=width)
+    else:
+        st.warning("⚠️ icon.png 未找到")
+
+# ================= 4. 登录页 =================
 def show_login_page():
     col_poster, col_login = st.columns([1, 1])
+    
     with col_poster:
-        st.image("https://images.unsplash.com/photo-1552168324-d612d77725e3?q=80&w=1000&auto=format&fit=crop", 
-                 use_container_width=True)
+        if os.path.exists("icon.png"):
+            st.image("icon.png", use_container_width=True)
+        else:
+            st.image("https://images.unsplash.com/photo-1552168324-d612d77725e3?q=80&w=1000", use_container_width=True)
 
     with col_login:
         st.title("🌿 智影")
         st.markdown("##### 您的 24小时 AI 摄影私教")
-        
         st.info("✨ **一键评分** | 📊 **参数直出** | 🎓 **大师指导**")
         
         with st.container(border=True):
@@ -184,48 +193,44 @@ def show_login_page():
                         st.session_state.logged_in = True
                         st.session_state.user_phone = phone_input
                         st.session_state.expire_date = expire_date_str
-                        # 登录成功，打印日志
-                        print(f"⭐⭐⭐ [MONITOR] LOGIN SUCCESS | User: {phone_input} | Time: {datetime.now()}")
+                        if 'current_image' in st.session_state: del st.session_state['current_image']
+                        
+                        # ⭐ 使用 logger 替代 print，确保后台能看到
+                        logger.info(f"⭐⭐⭐ [MONITOR] LOGIN SUCCESS | User: {phone_input}")
                         st.rerun()
                     else:
                         st.error("账号或激活码错误")
                 except Exception as e:
-                    st.error(f"系统配置错误: {e}")
+                    st.error(f"配置错误: {e}")
 
         st.warning("💎 **获取激活码 / 续费请联系微信：BayernGomez**")
         with st.expander("📲 安装教程"):
             st.markdown("iPhone: Safari分享 -> 添加到主屏幕\nAndroid: Chrome菜单 -> 添加到主屏幕")
 
-# ================= 5. 主程序 (逻辑重写) =================
+# ================= 5. 主程序 =================
 def show_main_app():
     if not configure_random_key():
         st.stop()
 
-    # --- 动态 CSS (深色模式) ---
     if st.session_state.dark_mode:
-        theme_css = """
-        <style>
+        st.markdown("""<style>
         .stApp {background-color: #121212; color: #E0E0E0;}
-        .result-card {background-color: #1E1E1E; color: #E0E0E0; border-left: 5px solid #81C784;}
+        .result-card {background-color: #1E1E1E; color: #E0E0E0;}
         section[data-testid="stSidebar"] {background-color: #1E1E1E;}
         [data-baseweb="input"] {background-color: #262626; color: white;}
-        </style>
-        """
-        st.markdown(theme_css, unsafe_allow_html=True)
+        </style>""", unsafe_allow_html=True)
 
-    # --- 侧边栏 ---
     with st.sidebar:
-        st.title("🌿 用户中心")
+        show_logo(width=100)
+        st.title("用户中心")
         st.info(f"👤 {st.session_state.user_phone}")
         st.caption(f"有效期: {st.session_state.expire_date}")
         
         st.markdown("---")
-        st.markdown("**⚙️ 模式选择**")
         mode_select = st.radio(
-            "选择分析深度:", 
+            "模式选择:", 
             ["📷 日常快评", "🧐 专业艺术"],
-            index=0,
-            label_visibility="collapsed"
+            index=0
         )
 
         st.markdown("---")
@@ -265,15 +270,14 @@ def show_main_app():
 
         if st.button("退出登录", use_container_width=True):
             st.session_state.logged_in = False
+            if 'current_image' in st.session_state: del st.session_state['current_image']
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V21.0 Final")
+        st.caption("Ver: V23.0 Monitor")
 
-    # --- 字体应用 ---
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
-    # --- 提示词 ---
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
         active_prompt = """你是一位亲切的摄影博主“智影”。
@@ -319,8 +323,9 @@ def show_main_app():
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
         banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
 
-    # --- 主界面 ---
-    st.title("🌿 智影 | 影像私教")
+    col_h1, col_h2 = st.columns([0.2, 2])
+    with col_h1: show_logo()
+    with col_h2: st.title("智影 | 影像私教")
     
     st.markdown(f"""
     <div style="background-color: {banner_bg}; padding: 15px; border-radius: 10px; margin-bottom: 20px; color: {'#333' if not st.session_state.dark_mode else '#eee'};">
@@ -328,10 +333,7 @@ def show_main_app():
     </div>
     """, unsafe_allow_html=True)
 
-    # === 修复核心：互斥的图片输入 ===
-    # 这里的 on_change 是关键，一点这个就会清空另一个
     tab1, tab2 = st.tabs(["📂 上传照片", "📷 现场拍摄"])
-    
     active_image = None
     
     with tab1:
@@ -342,11 +344,9 @@ def show_main_app():
         c = st.camera_input("点击拍摄", key="cam_file", on_change=clear_upload)
         if c: active_image = Image.open(c).convert('RGB')
 
-    # 重置按钮 (彻底清空)
     if st.button("🗑️ 清空重置 / 换张图", use_container_width=True, on_click=reset_all):
         st.rerun()
 
-    # --- 分析逻辑 ---
     if active_image:
         st.divider()
         c1, c2 = st.columns([1, 1.2])
@@ -359,14 +359,13 @@ def show_main_app():
                     with st.expander("📷 拍摄参数"): st.json(exif)
         
         with c2:
-            # 如果没有报告，显示按钮
             if not st.session_state.current_report:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：想修出日系感...")
                 
                 if st.button("🚀 开始评估", type="primary", use_container_width=True):
                     with st.status(status_msg, expanded=True) as s:
-                        # 🟢 监控日志打印
-                        print(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone} | Mode: {mode_select}")
+                        # ⭐ 使用 logger 输出日志
+                        logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone} | Mode: {mode_select}")
                         
                         generation_config = genai.types.GenerationConfig(temperature=0.1)
                         model = genai.GenerativeModel(real_model, system_instruction=active_prompt)
@@ -381,13 +380,10 @@ def show_main_app():
                         s.update(label="✅ 分析完成", state="complete", expanded=False)
                         st.rerun()
             
-            # 报告展示区
             if st.session_state.current_report:
                 st.markdown(f'<div class="result-card">{st.session_state.current_report}</div>', unsafe_allow_html=True)
                 
-                # 自动存档
                 img_b64 = img_to_base64(active_image)
-                # 检查是否已存，避免重复
                 if not st.session_state.history or st.session_state.history[-1]['content'] != st.session_state.current_report:
                     record = {"time": datetime.now().strftime("%H:%M"), "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
                     st.session_state.history.append(record)
