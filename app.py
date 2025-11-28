@@ -17,7 +17,7 @@ logging.getLogger('streamlit').setLevel(logging.ERROR)
 
 st.set_page_config(
     page_title="智影 | AI 影像顾问", 
-    page_icon="🌿", 
+    page_icon="icon.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -401,4 +401,5 @@ if __name__ == "__main__":
     if st.session_state.logged_in:
         show_main_app()
     else:
+
         show_login_page()
