@@ -45,14 +45,14 @@ st.markdown("""
     
     .block-container {
         padding-top: 1rem !important;
-        padding-bottom: 2rem !important;
+        padding-bottom: 3rem !important;
     }
     
     section[data-testid="stSidebar"] {
         display: block;
     }
     
-    /* 结果卡片优化：允许表格横向滚动 */
+    /* 结果卡片优化 */
     .result-card {
         background-color: #f8f9fa;
         border-left: 5px solid #4CAF50;
@@ -64,10 +64,10 @@ st.markdown("""
         overflow-x: auto;
     }
     
-    /* 强制表格样式 */
+    /* 表格样式 */
     .result-card table {
         width: 100%;
-        min-width: 300px; /* 防止手机上挤在一起 */
+        min-width: 300px;
         border-collapse: collapse;
     }
     .result-card th, .result-card td {
@@ -99,7 +99,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ================= 2. 逻辑引擎 =================
-
 def is_valid_phone(phone):
     pattern = r"^1[3-9]\d{9}$"
     return bool(re.match(pattern, phone))
@@ -194,7 +193,8 @@ def init_session_state():
         'dark_mode': False,
         'current_report': None,
         'last_img_hash': None,
-        'processing': False
+        'processing': False,
+        'uploader_key': 0, # 👈 新增：用于强制重置上传控件的ID
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -202,19 +202,28 @@ def init_session_state():
 
 init_session_state()
 
+# --- 关键回调函数 ---
+def clear_report_only():
+    """切换模式时，只清空报告，保留图片"""
+    st.session_state.current_report = None
+    # 不清除 last_img_hash，这样用户点按钮时可以触发新的一致性检查或重新生成
+
 def clear_camera():
     if 'cam_file' in st.session_state: del st.session_state['cam_file']
-    # 切换不清除报告，除非重置
+    # 不清空报告，防止误触
 
 def clear_upload():
-    if 'up_file' in st.session_state: del st.session_state['up_file']
+    # 不清空报告
+    pass
 
 def reset_all():
-    if 'cam_file' in st.session_state: del st.session_state['cam_file']
-    if 'up_file' in st.session_state: del st.session_state['up_file']
+    """彻底重置：清空图片、报告、并强制刷新上传控件"""
     st.session_state.current_report = None
     st.session_state.last_img_hash = None
     if 'current_image' in st.session_state: del st.session_state['current_image']
+    
+    # 🔥 核心修复：更新 Key，强制 Streamlit 重新渲染上传组件，从而清空文件名
+    st.session_state.uploader_key += 1 
 
 # ================= 4. 登录页 =================
 def show_login_page():
@@ -292,6 +301,7 @@ def show_login_page():
                             st.error("❌ 试用次数已用完")
                             st.warning("请联系微信 **BayernGomez28** 购买正式会员。")
                         else:
+                            # 登录时不扣费
                             st.session_state.logged_in = True
                             st.session_state.user_phone = guest_phone
                             st.session_state.user_role = 'guest'
@@ -350,7 +360,13 @@ def show_main_app():
             st.progress(used/MAX_GUEST_USAGE, text=f"剩余次数: {remain}/{MAX_GUEST_USAGE}")
         
         st.markdown("---")
-        mode_select = st.radio("模式选择:", ["📷 日常快评", "🧐 专业艺术"], index=0)
+        # 🔥 核心修复：模式切换触发 on_change，自动清除报告，露出按钮
+        mode_select = st.radio(
+            "模式选择:", 
+            ["📷 日常快评", "🧐 专业艺术"],
+            index=0,
+            on_change=clear_report_only # 👈 关键：切模式自动清除报告
+        )
 
         st.markdown("---")
         with st.expander("🕒 历史记录", expanded=False):
@@ -393,13 +409,12 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V37.0 Final")
+        st.caption("Ver: V38.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
-        # 🟢 修复：提示词强制要求具体数值
         active_prompt = """你是一位亲切的摄影博主“智影”。
 请严格按照 Markdown 格式输出，标题与内容之间空一行。
 # 🌟 综合评分: {分数}/10
@@ -410,10 +425,6 @@ def show_main_app():
 ### 🎨 手机修图参数 (Wake/iPhone)
 | 参数项 | 推荐数值 (预估) | 调整理由 |
 | :--- | :--- | :--- |
-| 曝光 | 例如 +15 | 提亮整体 |
-| 对比度 | 例如 -10 | 柔和画面 |
-| 饱和度 | 例如 +5 | 增加色彩 |
-| 色温 | 例如 +20 | 增加暖调 |
 | ... | ... | ... |
 *(请给出具体的正负数值，如 +10, -5)*
 
@@ -422,12 +433,11 @@ def show_main_app():
 
 ---
 **🌿 智影寄语:** {金句}"""
-        status_msg = "✨ 正在计算最佳修图数值..."
+        status_msg = "✨ 正在生成手机修图方案..."
         banner_text = "日常记录 | 适用：朋友圈、手机摄影、快速出片"
         banner_bg = "#e8f5e9" if not st.session_state.dark_mode else "#1b5e20"
     else:
         real_model = "gemini-2.5-flash"
-        # 🟢 修复：提示词强制要求商业级数值
         active_prompt = """你是一位视觉总监“智影”。
 请严格按照 Markdown 格式输出，标题与内容之间空一行。
 # 🏆 艺术总评: {分数}/10
@@ -438,13 +448,8 @@ def show_main_app():
 ### 🎨 商业后期面板 (Lightroom/C1)
 | 模块 | 参数项 | 推荐数值 | 专业解析 |
 | :--- | :--- | :--- | :--- |
-| 基础 | 曝光 | +0.5 EV | ... |
-| 基础 | 高光 | -20 | ... |
-| 基础 | 阴影 | +15 | ... |
-| 基础 | 色温 | 5600K | ... |
-| 曲线 | 暗部 | 提亮 +10 | ... |
-| HSL | 橙色明度 | +15 | 提亮肤色 |
-*(请给出具体的参数值)*
+| ... | ... | ... | ... |
+*(请包含曲线、HSL、分离色调等高级参数)*
 
 ### 🎓 大师进阶课
 ...
@@ -478,14 +483,21 @@ def show_main_app():
 
     tab1, tab2 = st.tabs(["📂 上传照片", "📷 现场拍摄"])
     
+    # 🔥 核心修复：使用动态 Key (uploader_key) 来强制重置上传组件
     with tab1:
-        f = st.file_uploader("支持 JPG/PNG", type=["jpg","png","webp"], key="up_file", on_change=clear_camera)
+        f = st.file_uploader(
+            "支持 JPG/PNG", 
+            type=["jpg","png","webp"], 
+            key=f"up_file_{st.session_state.uploader_key}", # 动态Key
+            on_change=clear_camera
+        )
         if f: st.session_state.current_image = Image.open(f).convert('RGB')
             
     with tab2:
         c = st.camera_input("点击拍摄", key="cam_file", on_change=clear_upload)
         if c: st.session_state.current_image = Image.open(c).convert('RGB')
 
+    # 🔥 核心修复：点击重置时，调用 reset_all 更新 uploader_key
     if st.button("🗑️ 清空重置 / 换张图", use_container_width=True, on_click=reset_all):
         st.rerun()
 
@@ -501,26 +513,13 @@ def show_main_app():
                     with st.expander("📷 拍摄参数"): st.json(exif)
         
         with c2:
-            # === 带缓存的 AI 调用 ===
-            @st.cache_data(show_spinner=False, ttl=3600)
-            def generate_ai_analysis(img_bytes, prompt, model_name):
-                try:
-                    img = Image.open(io.BytesIO(img_bytes))
-                    cfg = genai.types.GenerationConfig(temperature=0.0)
-                    m = genai.GenerativeModel(model_name, system_instruction=prompt)
-                    res = m.generate_content([img, "分析此图。"], generation_config=cfg)
-                    return res.text
-                except Exception as e:
-                    return f"ERROR: {e}"
-
+            # 只有当没有报告时，才显示按钮。或者切换模式时报告被清除，按钮也会回来。
             if not st.session_state.current_report:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：想修出日系感...")
                 
                 if st.button("🚀 开始评估", type="primary", use_container_width=True):
-                    # 游客拦截逻辑
                     if st.session_state.user_role == 'guest':
                         current_hash = get_image_hash(st.session_state.current_image)
-                        # 如果不是同一张图重复点击，则扣费
                         if st.session_state.last_img_hash != current_hash:
                             current_usage = get_guest_usage(st.session_state.user_phone)
                             if current_usage >= MAX_GUEST_USAGE:
@@ -552,9 +551,12 @@ def show_main_app():
                 st.markdown(f'<div class="result-card">{st.session_state.current_report}</div>', unsafe_allow_html=True)
                 
                 img_b64 = img_to_base64(st.session_state.current_image)
+                # 存历史
+                current_time = datetime.now().strftime("%H:%M")
+                new_record = {"time": current_time, "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
+                
                 if not st.session_state.history or st.session_state.history[-1]['content'] != st.session_state.current_report:
-                    record = {"time": datetime.now().strftime("%H:%M"), "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
-                    st.session_state.history.append(record)
+                    st.session_state.history.append(new_record)
                     if len(st.session_state.history) > 5: st.session_state.history.pop(0)
 
                 btn_c1, btn_c2 = st.columns(2)
@@ -564,8 +566,7 @@ def show_main_app():
                 
                 with btn_c2:
                     if st.button("❤️ 加入收藏", use_container_width=True):
-                        record = {"time": datetime.now().strftime("%H:%M"), "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
-                        st.session_state.favorites.append(record)
+                        st.session_state.favorites.append(new_record)
                         st.toast("已收藏！", icon="⭐")
 
 if __name__ == "__main__":
