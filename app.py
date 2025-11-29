@@ -12,7 +12,7 @@ import logging
 import sys
 import json
 import re
-import hashlib  # 👈 新增：用于给图片生成唯一的“指纹”ID
+import hashlib
 
 # ================= 0. 核心配置 =================
 warnings.filterwarnings("ignore")
@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# SVG 图标 (绿色叶子)
+# SVG 图标
 LEAF_ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRDQUY1MCI+PHBhdGggZD0iTTE3LDhDOCwxMCw1LjksMTYuMTcsMy44MiwyMS4zNEw1LjcxLDIybDEtMi4zQTQuNDksNC40OSwwLDAsMCw4LDIwQzE5LDIwLDIyLDMsMjIsMywyMSw1LDE0LDUuMjUsOSw2LjI1UzIsMTEuNSwyLDEzLjVhNi4yMiw2LjIyLDAsMCwwLDEuNzUsMy43NUM3LDgsMTcsOCwxNyw4WiIvPjwvc3ZnPg=="
 
 st.set_page_config(
@@ -35,10 +35,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================= 1. CSS 深度美化 (修复表格显示问题) =================
+# ================= 1. CSS 美化 =================
 st.markdown("""
     <style>
-    /* 基础清理 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -53,7 +52,7 @@ st.markdown("""
         display: block;
     }
     
-    /* 结果卡片优化：增加横向滚动，防止表格被截断 */
+    /* 结果卡片优化：允许表格横向滚动 */
     .result-card {
         background-color: #f8f9fa;
         border-left: 5px solid #4CAF50;
@@ -62,24 +61,24 @@ st.markdown("""
         margin-top: 10px;
         margin-bottom: 20px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        overflow-x: auto; /* 👈 关键修复：允许左右滑动查看完整表格 */
+        overflow-x: auto;
     }
     
-    /* 表格样式强制优化 */
+    /* 强制表格样式 */
     .result-card table {
         width: 100%;
+        min-width: 300px; /* 防止手机上挤在一起 */
         border-collapse: collapse;
-        margin: 10px 0;
     }
     .result-card th, .result-card td {
-        border: 1px solid #ddd;
-        padding: 8px;
+        border: 1px solid #e0e0e0;
+        padding: 8px 12px;
         text-align: left;
-        font-size: 14px;
     }
     .result-card th {
         background-color: #e8f5e9;
         color: #2E7D32;
+        font-weight: bold;
     }
     
     .stButton>button {
@@ -99,7 +98,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 2. 数据与逻辑引擎 =================
+# ================= 2. 逻辑引擎 =================
 
 def is_valid_phone(phone):
     pattern = r"^1[3-9]\d{9}$"
@@ -123,22 +122,19 @@ def save_guest_usage(phone):
             with open(GUEST_FILE, 'r') as f:
                 data = json.load(f)
         except: pass
-    
     current = data.get(phone, 0)
     data[phone] = current + 1
-    
     with open(GUEST_FILE, 'w') as f:
         json.dump(data, f)
     return data[phone]
 
-# --- 图片指纹生成 (防重复扣费核心) ---
 def get_image_hash(image):
     try:
         img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='JPEG') # 统一格式计算
+        image.save(img_byte_arr, format='JPEG')
         return hashlib.md5(img_byte_arr.getvalue()).hexdigest()
     except:
-        return str(time.time()) # 兜底
+        return str(time.time())
 
 def configure_random_key():
     try:
@@ -197,7 +193,7 @@ def init_session_state():
         'font_size': 16,
         'dark_mode': False,
         'current_report': None,
-        'last_img_hash': None, # 👈 新增：记录上一张图的指纹
+        'last_img_hash': None,
         'processing': False
     }
     for key, value in defaults.items():
@@ -208,8 +204,8 @@ init_session_state()
 
 def clear_camera():
     if 'cam_file' in st.session_state: del st.session_state['cam_file']
-    # 切换输入源时，不要清空报告，除非用户点了重置
-    
+    # 切换不清除报告，除非重置
+
 def clear_upload():
     if 'up_file' in st.session_state: del st.session_state['up_file']
 
@@ -217,7 +213,7 @@ def reset_all():
     if 'cam_file' in st.session_state: del st.session_state['cam_file']
     if 'up_file' in st.session_state: del st.session_state['up_file']
     st.session_state.current_report = None
-    st.session_state.last_img_hash = None # 清空指纹
+    st.session_state.last_img_hash = None
     if 'current_image' in st.session_state: del st.session_state['current_image']
 
 # ================= 4. 登录页 =================
@@ -243,7 +239,6 @@ def show_login_page():
         
         login_tab1, login_tab2 = st.tabs(["💎 会员登录", "🎁 游客试用"])
         
-        # --- 会员登录 ---
         with login_tab1:
             with st.container(border=True):
                 phone_input = st.text_input("手机号码", placeholder="请输入注册手机号", max_chars=11, key="vip_phone")
@@ -283,7 +278,6 @@ def show_login_page():
                         except:
                             st.error("系统维护中")
 
-        # --- 游客登录 ---
         with login_tab2:
             with st.container(border=True):
                 st.info(f"🎁 新用户免费试用 {MAX_GUEST_USAGE} 次")
@@ -298,7 +292,6 @@ def show_login_page():
                             st.error("❌ 试用次数已用完")
                             st.warning("请联系微信 **BayernGomez28** 购买正式会员。")
                         else:
-                            # 注意：登录时不扣费，点击分析时才扣费
                             st.session_state.logged_in = True
                             st.session_state.user_phone = guest_phone
                             st.session_state.user_role = 'guest'
@@ -324,7 +317,7 @@ def show_login_page():
                 st.markdown("2. 点击右上角菜单")
                 st.markdown("3. 选择 [添加到主屏幕]")
 
-# ================= 6. 主程序 =================
+# ================= 5. 主程序 =================
 def show_main_app():
     if not configure_random_key():
         st.stop()
@@ -400,13 +393,13 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V36.0 Final")
+        st.caption("Ver: V37.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
-        # 优化提示词：强制表格格式简洁，防止手机端溢出
+        # 🟢 修复：提示词强制要求具体数值
         active_prompt = """你是一位亲切的摄影博主“智影”。
 请严格按照 Markdown 格式输出，标题与内容之间空一行。
 # 🌟 综合评分: {分数}/10
@@ -415,20 +408,26 @@ def show_main_app():
 > {点评}
 
 ### 🎨 手机修图参数 (Wake/iPhone)
-| 参数 | 数值 | 目的 |
+| 参数项 | 推荐数值 (预估) | 调整理由 |
 | :--- | :--- | :--- |
+| 曝光 | 例如 +15 | 提亮整体 |
+| 对比度 | 例如 -10 | 柔和画面 |
+| 饱和度 | 例如 +5 | 增加色彩 |
+| 色温 | 例如 +20 | 增加暖调 |
 | ... | ... | ... |
+*(请给出具体的正负数值，如 +10, -5)*
 
 ### 📸 随手拍建议
 ...
 
 ---
 **🌿 智影寄语:** {金句}"""
-        status_msg = "✨ 正在生成手机修图方案..."
+        status_msg = "✨ 正在计算最佳修图数值..."
         banner_text = "日常记录 | 适用：朋友圈、手机摄影、快速出片"
         banner_bg = "#e8f5e9" if not st.session_state.dark_mode else "#1b5e20"
     else:
         real_model = "gemini-2.5-flash"
+        # 🟢 修复：提示词强制要求商业级数值
         active_prompt = """你是一位视觉总监“智影”。
 请严格按照 Markdown 格式输出，标题与内容之间空一行。
 # 🏆 艺术总评: {分数}/10
@@ -437,16 +436,22 @@ def show_main_app():
 ...
 
 ### 🎨 商业后期面板 (Lightroom/C1)
-| 模块 | 参数 | 建议 |
-| :--- | :--- | :--- |
-| ... | ... | ... |
+| 模块 | 参数项 | 推荐数值 | 专业解析 |
+| :--- | :--- | :--- | :--- |
+| 基础 | 曝光 | +0.5 EV | ... |
+| 基础 | 高光 | -20 | ... |
+| 基础 | 阴影 | +15 | ... |
+| 基础 | 色温 | 5600K | ... |
+| 曲线 | 暗部 | 提亮 +10 | ... |
+| HSL | 橙色明度 | +15 | 提亮肤色 |
+*(请给出具体的参数值)*
 
 ### 🎓 大师进阶课
 ...
 
 ---
 **🌿 智影寄语:** {哲理}"""
-        status_msg = "🧠 正在进行商业级光影分析..."
+        status_msg = "🧠 正在进行商业级数值测算..."
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
         banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
 
@@ -496,20 +501,27 @@ def show_main_app():
                     with st.expander("📷 拍摄参数"): st.json(exif)
         
         with c2:
+            # === 带缓存的 AI 调用 ===
+            @st.cache_data(show_spinner=False, ttl=3600)
+            def generate_ai_analysis(img_bytes, prompt, model_name):
+                try:
+                    img = Image.open(io.BytesIO(img_bytes))
+                    cfg = genai.types.GenerationConfig(temperature=0.0)
+                    m = genai.GenerativeModel(model_name, system_instruction=prompt)
+                    res = m.generate_content([img, "分析此图。"], generation_config=cfg)
+                    return res.text
+                except Exception as e:
+                    return f"ERROR: {e}"
+
             if not st.session_state.current_report:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：想修出日系感...")
                 
                 if st.button("🚀 开始评估", type="primary", use_container_width=True):
-                    # === 🟢 核心防刷逻辑：检查图片是否未变 ===
-                    current_img_hash = get_image_hash(st.session_state.current_image)
-                    
-                    # 如果hash一样，说明用户没换图，只是手滑又点了一次
-                    if st.session_state.last_img_hash == current_img_hash and st.session_state.current_report:
-                        st.toast("已显示上次分析结果 (本次不扣费)", icon="✨")
-                        # 已经是显示状态，不需要做任何事
-                    else:
-                        # 确实是新图片，执行扣费检查
-                        if st.session_state.user_role == 'guest':
+                    # 游客拦截逻辑
+                    if st.session_state.user_role == 'guest':
+                        current_hash = get_image_hash(st.session_state.current_image)
+                        # 如果不是同一张图重复点击，则扣费
+                        if st.session_state.last_img_hash != current_hash:
                             current_usage = get_guest_usage(st.session_state.user_phone)
                             if current_usage >= MAX_GUEST_USAGE:
                                 st.error("❌ 试用次数已用完！")
@@ -517,24 +529,22 @@ def show_main_app():
                                 st.stop()
                             else:
                                 save_guest_usage(st.session_state.user_phone)
+                    
+                    with st.status(status_msg, expanded=True) as s:
+                        logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone}")
                         
-                        # 调用 AI
-                        with st.status(status_msg, expanded=True) as s:
-                            logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone}")
-                            
-                            # 强制低温，保证一致性
-                            generation_config = genai.types.GenerationConfig(temperature=0.0)
-                            model = genai.GenerativeModel(real_model, system_instruction=active_prompt)
-                            
-                            msg = "分析此图。"
-                            if user_req: msg += f" 备注：{user_req}"
-                            
-                            response = model.generate_content([msg, st.session_state.current_image], generation_config=generation_config)
-                            
-                            st.session_state.current_report = response.text
+                        img_byte_arr = io.BytesIO()
+                        st.session_state.current_image.save(img_byte_arr, format='JPEG')
+                        img_bytes = img_byte_arr.getvalue()
+                        
+                        ai_result = generate_ai_analysis(img_bytes, active_prompt, real_model)
+                        
+                        if "ERROR:" in ai_result:
+                            st.error(ai_result)
+                        else:
+                            st.session_state.current_report = ai_result
                             st.session_state.current_req = user_req
-                            st.session_state.last_img_hash = current_img_hash # 记录本次图片指纹
-                            
+                            st.session_state.last_img_hash = get_image_hash(st.session_state.current_image)
                             s.update(label="✅ 分析完成", state="complete", expanded=False)
                             st.rerun()
             
