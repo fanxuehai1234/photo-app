@@ -11,6 +11,7 @@ import base64
 import logging
 import sys
 import json
+import re  # 👈 新增：正则表达式模块，用于校验手机号
 
 # ================= 0. 核心配置 =================
 warnings.filterwarnings("ignore")
@@ -65,7 +66,6 @@ st.markdown("""
         border-radius: 8px;
     }
     
-    /* 试用提示条 */
     .trial-banner {
         background-color: #FFF3CD;
         color: #856404;
@@ -80,7 +80,7 @@ st.markdown("""
 
 # ================= 2. 游客数据管理 =================
 GUEST_FILE = "guest_usage.json"
-MAX_GUEST_USAGE = 3  # 🔴 设定试用次数为 3 次
+MAX_GUEST_USAGE = 3
 
 def load_guest_data():
     if not os.path.exists(GUEST_FILE):
@@ -102,6 +102,12 @@ def save_guest_usage(phone):
 def get_guest_usage(phone):
     data = load_guest_data()
     return data.get(phone, 0)
+
+# 🟢 新增：手机号正则校验函数
+def is_valid_phone(phone):
+    # 规则：1开头，第二位3-9，后面9位数字，共11位
+    pattern = r"^1[3-9]\d{9}$"
+    return bool(re.match(pattern, phone))
 
 # ================= 3. 状态初始化 =================
 def init_session_state():
@@ -182,12 +188,13 @@ def img_to_base64(image):
         return base64.b64encode(buffered.getvalue()).decode()
     except: return ""
 
-# ================= 5. 登录页 =================
+# ================= 5. 登录页 (修复图片与排版) =================
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     
     with col_poster:
-        st.image("https://images.unsplash.com/photo-1470104240373-0c33a30925e1?q=80&w=1000&auto=format&fit=crop", 
+        # 🟢 修复：更换为更稳定的 Unsplash 相机图链接
+        st.image("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=1000&auto=format&fit=crop", 
                  use_container_width=True)
         st.markdown('<div class="login-quote">“ 光影之处，皆是生活 ”</div>', unsafe_allow_html=True)
 
@@ -212,52 +219,56 @@ def show_login_page():
                 code_input = st.text_input("激活码", placeholder="请输入专属 Key", type="password", key="vip_code")
                 
                 if st.button("会员登录", type="primary", use_container_width=True):
-                    try:
-                        valid_accounts = st.secrets["VALID_ACCOUNTS"]
-                        login_success = False
-                        expire_date_str = ""
-                        for account_str in valid_accounts:
-                            parts = account_str.split(":")
-                            if len(parts) == 3 and phone_input == parts[0].strip() and code_input == parts[1].strip():
-                                exp_date = datetime.strptime(parts[2].strip(), "%Y-%m-%d")
-                                if datetime.now() > exp_date:
-                                    st.error(f"❌ 您的服务已于 {parts[2]} 到期")
-                                    return
-                                login_success = True
-                                expire_date_str = parts[2]
-                                break
-                        
-                        if login_success:
-                            st.session_state.logged_in = True
-                            st.session_state.user_phone = phone_input
-                            st.session_state.user_role = 'vip'
-                            st.session_state.expire_date = expire_date_str
+                    # 🟢 增强校验
+                    if not is_valid_phone(phone_input):
+                        st.error("请输入正确的 11 位手机号码")
+                    else:
+                        try:
+                            valid_accounts = st.secrets["VALID_ACCOUNTS"]
+                            login_success = False
+                            expire_date_str = ""
+                            for account_str in valid_accounts:
+                                parts = account_str.split(":")
+                                if len(parts) == 3 and phone_input == parts[0].strip() and code_input == parts[1].strip():
+                                    exp_date = datetime.strptime(parts[2].strip(), "%Y-%m-%d")
+                                    if datetime.now() > exp_date:
+                                        st.error(f"❌ 您的服务已于 {parts[2]} 到期")
+                                        st.stop()
+                                    login_success = True
+                                    expire_date_str = parts[2]
+                                    break
                             
-                            if 'current_image' in st.session_state: del st.session_state['current_image']
-                            st.session_state.history = []
-                            st.session_state.favorites = []
-                            
-                            logger.info(f"⭐⭐⭐ [MONITOR] VIP LOGIN | User: {phone_input}")
-                            st.rerun()
-                        else:
-                            st.error("账号或激活码错误")
-                    except:
-                        st.error("系统维护中")
+                            if login_success:
+                                st.session_state.logged_in = True
+                                st.session_state.user_phone = phone_input
+                                st.session_state.user_role = 'vip'
+                                st.session_state.expire_date = expire_date_str
+                                
+                                if 'current_image' in st.session_state: del st.session_state['current_image']
+                                st.session_state.history = []
+                                st.session_state.favorites = []
+                                
+                                logger.info(f"⭐⭐⭐ [MONITOR] VIP LOGIN | User: {phone_input}")
+                                st.rerun()
+                            else:
+                                st.error("账号或激活码错误")
+                        except:
+                            st.error("系统维护中")
 
         # --- Tab 2: 游客 ---
         with login_tab2:
             with st.container(border=True):
                 st.info(f"🎁 新用户免费试用 {MAX_GUEST_USAGE} 次")
-                guest_phone = st.text_input("手机号码 (记录次数)", placeholder="请输入手机号", max_chars=11, key="guest_phone")
+                guest_phone = st.text_input("手机号码", placeholder="请输入手机号 (用于记录次数)", max_chars=11, key="guest_phone")
                 
                 if st.button("开始试用", use_container_width=True):
-                    if len(guest_phone) != 11:
-                        st.error("请输入正确的 11 位手机号码")
+                    # 🟢 增强校验：必须符合正则
+                    if not is_valid_phone(guest_phone):
+                        st.error("请输入有效的 11 位手机号 (如 13800000000)")
                     else:
                         used_count = get_guest_usage(guest_phone)
                         if used_count >= MAX_GUEST_USAGE:
                             st.error("❌ 试用次数已耗尽")
-                            # 🔴 更新了微信号
                             st.warning("请联系微信 **BayernGomez28** 购买正式会员。")
                         else:
                             st.session_state.logged_in = True
@@ -272,10 +283,22 @@ def show_login_page():
                             logger.info(f"⭐⭐⭐ [MONITOR] GUEST LOGIN | User: {guest_phone}")
                             st.rerun()
 
-        # 🔴 更新了微信号
         st.caption("💎 购买会员请联系微信：**BayernGomez28**")
-        with st.expander("📲 安装教程"):
-            st.markdown("iPhone: Safari分享 -> 添加到主屏幕\nAndroid: Chrome菜单 -> 添加到主屏幕")
+        
+        # 🟢 修复：双列布局展示安装教程
+        with st.expander("📲 安装教程 (iPhone / Android)"):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**🍎 iPhone / iPad**")
+                st.markdown("1. 使用 Safari 打开")
+                st.markdown("2. 点击底部 [分享] 图标")
+                st.markdown("3. 选择 [添加到主屏幕]")
+            with c2:
+                st.markdown("**🤖 Android 安卓**")
+                st.markdown("1. 推荐 Chrome / Edge")
+                st.markdown("2. 点击右上角菜单")
+                st.markdown("3. 选择 [添加到主屏幕] 或 [安装应用]")
+                st.caption("*部分自带浏览器可能在工具箱里")
 
 # ================= 6. 主程序 =================
 def show_main_app():
@@ -352,7 +375,7 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V32.0 Final")
+        st.caption("Ver: V33.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
@@ -403,7 +426,7 @@ def show_main_app():
 
     st.markdown(f"""
     <div class="logo-header" style="display:flex; align-items:center; margin-bottom:20px;">
-        <img src="{LEAF_ICON}" class="logo-img" style="width:50px; height:50px; margin-right:15px;">
+        <img src="{LEAF_ICON}" style="width:50px; height:50px; margin-right:15px;">
         <h1 style="margin:0;">智影 | 影像私教</h1>
     </div>
     """, unsafe_allow_html=True)
@@ -456,7 +479,6 @@ def show_main_app():
                         current_usage = get_guest_usage(st.session_state.user_phone)
                         if current_usage >= MAX_GUEST_USAGE:
                             st.error("❌ 试用次数已用完！")
-                            # 🔴 更新微信号
                             st.info("请联系微信 **BayernGomez28** 购买正式会员。")
                             st.stop()
                         else:
