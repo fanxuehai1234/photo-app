@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- 🍃 修复：回归 V37 的 SVG 图标 (绝对稳定显示) ---
+# SVG 图标
 LEAF_ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRDQUY1MCI+PHBhdGggZD0iTTE3LDhDOCwxMCw1LjksMTYuMTcsMy44MiwyMS4zNEw1LjcxLDIybDEtMi4zQTQuNDksNC40OSwwLDAsMCw4LDIwQzE5LDIwLDIyLDMsMjIsMywyMSw1LDE0LDUuMjUsOSw2LjI1UzIsMTEuNSwyLDEzLjVhNi4yMiw2LjIyLDAsMCwwLDEuNzUsMy43NUM3LDgsMTcsOCwxNyw4WiIvPjwvc3ZnPg=="
 
 st.set_page_config(
@@ -34,6 +34,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# 🔥🔥🔥 核心修复：将所有常量定义提到这里，绝对防止 NameError 🔥🔥🔥
+GUEST_FILE = "guest_usage_v2.json"
+MAX_TOTAL_USAGE = 3
+MAX_PRO_USAGE = 1
 
 # ================= 1. CSS 深度美化 =================
 st.markdown("""
@@ -82,7 +87,6 @@ st.markdown("""
         border-radius: 8px;
     }
 
-    /* 手机端功能区 Flex布局 */
     .feature-container {
         display: flex;
         flex-direction: row;
@@ -109,7 +113,6 @@ st.markdown("""
         .feature-item { font-size: 12px; }
     }
 
-    /* 安装教程双栏 */
     .install-table {
         width: 100%;
         border-collapse: separate;
@@ -152,10 +155,6 @@ def is_valid_phone(phone):
     pattern = r"^1[3-9]\d{9}$"
     return bool(re.match(pattern, phone))
 
-GUEST_FILE = "guest_usage_v2.json"
-MAX_TOTAL_USAGE = 3
-MAX_PRO_USAGE = 1
-
 def get_guest_stats(phone):
     if not os.path.exists(GUEST_FILE): return {"total": 0, "pro": 0}
     try:
@@ -184,6 +183,7 @@ def update_guest_usage(phone, mode_type):
 
 def check_guest_permission(phone, mode_type):
     stats = get_guest_stats(phone)
+    # 这里直接使用顶部的常量，绝对不会报错
     if stats["total"] >= MAX_TOTAL_USAGE:
         return False, "❌ 试用总次数（3次）已用完！"
     if mode_type == 'pro' and stats["pro"] >= MAX_PRO_USAGE:
@@ -200,7 +200,6 @@ def get_image_hash(image):
 
 def configure_random_key():
     try:
-        # 修复：更稳健的 Secrets 读取，防止报错
         if "API_KEYS" not in st.secrets:
             st.error("⚠️ 后台未配置 API_KEYS")
             return False
@@ -283,7 +282,7 @@ def reset_all():
     if 'current_image' in st.session_state: del st.session_state['current_image']
     st.session_state.uploader_key += 1 
 
-# ================= 4. 登录页 (修复：SVG图标 & 点击逻辑) =================
+# ================= 4. 登录页 =================
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     
@@ -291,17 +290,15 @@ def show_login_page():
         if os.path.exists("icon.png"):
             st.image("icon.png", use_container_width=True)
         else:
-            # 兜底：如果 icon.png 还没传，显示占位符
-            st.warning("⚠️ 请在 GitHub 上传 icon.png (您的黑色相机图)")
-        
+            st.image("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=1000&auto=format&fit=crop", 
+                 use_container_width=True)
         st.markdown('<div style="text-align:center; color:#888; font-size:14px; margin-top:5px; font-style:italic;">“ 光影之处，皆是生活 ”</div>', unsafe_allow_html=True)
 
     with col_login:
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # 🟢 修复：使用 SVG 图标 (绝对显示)
         st.markdown(f"""
-        <div style="display:flex; align-items:center; margin-bottom:20px;">
+        <div class="logo-header" style="display:flex; align-items:center; margin-bottom:20px;">
             <img src="{LEAF_ICON}" style="width:50px; height:50px; margin-right:15px;">
             <h1 style="margin:0;">智影</h1>
         </div>
@@ -319,7 +316,6 @@ def show_login_page():
         
         login_tab1, login_tab2 = st.tabs(["💎 会员登录", "🎁 游客试用"])
         
-        # --- 会员登录 ---
         with login_tab1:
             with st.container(border=True):
                 phone_input = st.text_input("手机号码", max_chars=11, key="vip_phone")
@@ -329,27 +325,20 @@ def show_login_page():
                     if not is_valid_phone(phone_input):
                         st.error("请输入正确的 11 位手机号码")
                     else:
-                        # 🟢 修复：更稳健的读取逻辑，不再报“系统维护中”
-                        if "VALID_ACCOUNTS" not in st.secrets:
-                            st.error("⚠️ 后台 VALID_ACCOUNTS 未配置")
-                        else:
-                            valid_accounts = st.secrets["VALID_ACCOUNTS"]
+                        try:
+                            valid_accounts = st.secrets.get("VALID_ACCOUNTS", [])
                             login_success = False
                             expire_date_str = ""
-                            
                             for account_str in valid_accounts:
-                                try:
-                                    parts = account_str.split(":")
-                                    if len(parts) == 3 and phone_input == parts[0].strip() and code_input == parts[1].strip():
-                                        exp_date = datetime.strptime(parts[2].strip(), "%Y-%m-%d")
-                                        if datetime.now() > exp_date:
-                                            st.error(f"❌ 您的服务已于 {parts[2]} 到期")
-                                            # 使用 return 提前结束，防止继续执行
-                                            st.stop() 
-                                        login_success = True
-                                        expire_date_str = parts[2]
-                                        break
-                                except: continue
+                                parts = account_str.split(":")
+                                if len(parts) == 3 and phone_input == parts[0].strip() and code_input == parts[1].strip():
+                                    exp_date = datetime.strptime(parts[2].strip(), "%Y-%m-%d")
+                                    if datetime.now() > exp_date:
+                                        st.error(f"❌ 您的服务已于 {parts[2]} 到期")
+                                        st.stop()
+                                    login_success = True
+                                    expire_date_str = parts[2]
+                                    break
                             
                             if login_success:
                                 st.session_state.logged_in = True
@@ -363,8 +352,9 @@ def show_login_page():
                                 st.rerun()
                             else:
                                 st.error("账号或激活码错误")
+                        except Exception as e:
+                            st.error(f"系统维护中: {e}")
 
-        # --- 游客登录 ---
         with login_tab2:
             with st.container(border=True):
                 st.info(f"🎁 新用户免费试用 {MAX_TOTAL_USAGE} 次 (专业模式限 {MAX_PRO_USAGE} 次)")
@@ -435,7 +425,6 @@ def show_main_app():
         </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
-        # 🟢 修复：侧边栏 Logo (SVG)
         st.markdown(f"""
         <div class="logo-header" style="display:flex; align-items:center; margin-bottom:10px;">
             <img src="{LEAF_ICON}" style="width:30px; height:30px; margin-right:10px;">
@@ -510,7 +499,7 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V45.0 Final")
+        st.caption("Ver: V46.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
@@ -563,7 +552,6 @@ def show_main_app():
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
         banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
 
-    # 🟢 修复：主页 Logo (SVG)
     st.markdown(f"""
     <div class="logo-header" style="display:flex; align-items:center; margin-bottom:20px;">
         <img src="{LEAF_ICON}" style="width:50px; height:50px; margin-right:15px;">
@@ -578,7 +566,7 @@ def show_main_app():
     """, unsafe_allow_html=True)
 
     if st.session_state.user_role == 'guest':
-        remain = MAX_GUEST_USAGE - get_guest_usage(st.session_state.user_phone)
+        remain = MAX_TOTAL_USAGE - get_guest_stats(st.session_state.user_phone)['total']
         st.markdown(f"""
         <div class="trial-banner">
             🎁 游客模式：总剩余 <b>{remain}</b> 次 (专业模式仅 1 次) <br> 
@@ -620,6 +608,7 @@ def show_main_app():
                 user_req = st.text_input("备注 (可选):", placeholder="例如：想修出日系感...")
                 
                 if st.button("🚀 开始评估", type="primary", use_container_width=True):
+                    # === 扣费逻辑 ===
                     if st.session_state.user_role == 'guest':
                         current_hash = get_image_hash(st.session_state.current_image)
                         if st.session_state.last_img_hash != current_hash:
