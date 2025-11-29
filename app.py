@@ -25,17 +25,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# SVG 图标
+# SVG 小叶子图标 (用于标题旁)
 LEAF_ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRDQUY1MCI+PHBhdGggZD0iTTE3LDhDOCwxMCw1LjksMTYuMTcsMy44MiwyMS4zNEw1LjcxLDIybDEtMi4zQTQuNDksNC40OSwwLDAsMCw4LDIwQzE5LDIwLDIyLDMsMjIsMywyMSw1LDE0LDUuMjUsOSw2LjI1UzIsMTEuNSwyLDEzLjVhNi4yMiw2LjIyLDAsMCwwLDEuNzUsMy43NUM3LDgsMTcsOCwxNyw4WiIvPjwvc3ZnPg=="
 
 st.set_page_config(
     page_title="智影 | AI 影像顾问", 
-    page_icon="🌿", 
+    page_icon="icon.png", # 浏览器标签用 icon.png
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ================= 1. CSS 美化 =================
+# ================= 1. CSS 美化 (适配手机布局) =================
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -52,7 +52,7 @@ st.markdown("""
         display: block;
     }
     
-    /* 结果卡片优化 */
+    /* 结果卡片 */
     .result-card {
         background-color: #f8f9fa;
         border-left: 5px solid #4CAF50;
@@ -72,79 +72,81 @@ st.markdown("""
     }
     .result-card th, .result-card td {
         border: 1px solid #e0e0e0;
-        padding: 8px 12px;
+        padding: 8px;
         text-align: left;
     }
     .result-card th {
         background-color: #e8f5e9;
         color: #2E7D32;
-        font-weight: bold;
     }
     
     .stButton>button {
         font-weight: bold;
         border-radius: 8px;
     }
-    
-    .trial-banner {
-        background-color: #FFF3CD;
-        color: #856404;
-        padding: 10px;
-        border-radius: 5px;
-        text-align: center;
-        margin-bottom: 15px;
-        border: 1px solid #FFEEBA;
-    }
 
-    /* 登录页特性宣传区 */
-    .feature-box {
+    /* 锁住功能的遮罩样式 */
+    .locked-feature {
+        background-color: #f0f2f6;
+        padding: 15px;
+        border-radius: 8px;
         text-align: center;
-        padding: 10px;
-    }
-    .feature-icon {
-        font-size: 2.5rem;
-        margin-bottom: 10px;
-    }
-    .feature-title {
-        font-weight: bold;
-        margin-bottom: 5px;
-    }
-    .feature-desc {
         color: #666;
-        font-size: 0.9rem;
+        border: 1px dashed #ccc;
     }
     </style>
     """, unsafe_allow_html=True)
 
 # ================= 2. 逻辑引擎 =================
+
 def is_valid_phone(phone):
     pattern = r"^1[3-9]\d{9}$"
     return bool(re.match(pattern, phone))
 
-GUEST_FILE = "guest_usage.json"
-MAX_GUEST_USAGE = 3
+# --- 游客权限管理核心 ---
+GUEST_FILE = "guest_usage_v2.json" # 升级数据结构
+MAX_TOTAL_USAGE = 3
+MAX_PRO_USAGE = 1 # 专业模式只能用1次
 
-def get_guest_usage(phone):
-    if not os.path.exists(GUEST_FILE): return 0
+def get_guest_stats(phone):
+    if not os.path.exists(GUEST_FILE): return {"total": 0, "pro": 0}
     try:
         with open(GUEST_FILE, 'r') as f:
             data = json.load(f)
-            return data.get(phone, 0)
-    except: return 0
+            return data.get(phone, {"total": 0, "pro": 0})
+    except: return {"total": 0, "pro": 0}
 
-def save_guest_usage(phone):
+def update_guest_usage(phone, mode_type):
+    # mode_type: 'daily' 或 'pro'
     data = {}
     if os.path.exists(GUEST_FILE):
         try:
             with open(GUEST_FILE, 'r') as f:
                 data = json.load(f)
         except: pass
-    current = data.get(phone, 0)
-    data[phone] = current + 1
+    
+    user_stats = data.get(phone, {"total": 0, "pro": 0})
+    
+    # 更新数据
+    user_stats["total"] += 1
+    if mode_type == 'pro':
+        user_stats["pro"] += 1
+        
+    data[phone] = user_stats
+    
     with open(GUEST_FILE, 'w') as f:
         json.dump(data, f)
-    return data[phone]
+    return user_stats
 
+def check_guest_permission(phone, mode_type):
+    stats = get_guest_stats(phone)
+    if stats["total"] >= MAX_TOTAL_USAGE:
+        return False, "❌ 试用总次数（3次）已用完！"
+    if mode_type == 'pro' and stats["pro"] >= MAX_PRO_USAGE:
+        return False, "❌ 专业模式试用仅限 1 次，您已用完！请切换回日常模式，或升级会员。"
+    return True, "OK"
+
+# --- 图片指纹 ---
 def get_image_hash(image):
     try:
         img_byte_arr = io.BytesIO()
@@ -153,6 +155,7 @@ def get_image_hash(image):
     except:
         return str(time.time())
 
+# --- Key 管理 ---
 def configure_random_key():
     try:
         keys = st.secrets["API_KEYS"]
@@ -211,7 +214,6 @@ def init_session_state():
         'dark_mode': False,
         'current_report': None,
         'last_img_hash': None,
-        'processing': False,
         'uploader_key': 0,
     }
     for key, value in defaults.items():
@@ -220,7 +222,6 @@ def init_session_state():
 
 init_session_state()
 
-# --- 关键回调函数 (保留 V38 修复) ---
 def clear_report_only():
     st.session_state.current_report = None
 
@@ -228,7 +229,7 @@ def clear_camera():
     if 'cam_file' in st.session_state: del st.session_state['cam_file']
 
 def clear_upload():
-    pass
+    pass # 不强制清除，由reset_all统一管理
 
 def reset_all():
     st.session_state.current_report = None
@@ -236,58 +237,46 @@ def reset_all():
     if 'current_image' in st.session_state: del st.session_state['current_image']
     st.session_state.uploader_key += 1 
 
-# ================= 4. 登录页 (V39升级：高大上功能区) =================
+# ================= 4. 登录页 (图片改为本地读取) =================
 def show_login_page():
-    col_poster, col_login = st.columns([1.2, 1])
+    # 调整比例，让左侧图片小一点，适应手机屏幕
+    col_poster, col_login = st.columns([0.8, 1.2])
     
     with col_poster:
-        st.image("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=1000&auto=format&fit=crop", 
-                 use_container_width=True)
-        st.markdown('<div style="text-align:center; color:#888; margin-top:10px; font-style:italic;">“ 光影之处，皆是生活 ”</div>', unsafe_allow_html=True)
+        # 🔴 核心修改：直接读取 GitHub 里的 icon.png
+        if os.path.exists("icon.png"):
+            st.image("icon.png", use_container_width=True)
+        else:
+            st.warning("请上传 icon.png")
+        
+        # 标语
+        st.markdown('<div style="text-align:center; color:#888; font-size:14px; margin-top:5px; font-style:italic;">“ 光影之处，皆是生活 ”</div>', unsafe_allow_html=True)
 
     with col_login:
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Header
         st.markdown(f"""
-        <div style="display:flex; align-items:center; margin-bottom:20px;">
-            <img src="{LEAF_ICON}" style="width:50px; height:50px; margin-right:15px;">
-            <h1 style="margin:0;">智影</h1>
+        <div style="display:flex; align-items:center; margin-bottom:15px;">
+            <img src="{LEAF_ICON}" style="width:40px; height:40px; margin-right:10px;">
+            <h1 style="margin:0; font-size: 2rem;">智影</h1>
         </div>
         """, unsafe_allow_html=True)
             
         st.markdown("#### 您的 24小时 AI 摄影私教")
 
-        # 🔥 V39升级：全新的功能宣传区 🔥
+        # 功能区
         st.markdown("---")
         f1, f2, f3 = st.columns(3)
-        with f1:
-            st.markdown("""<div class="feature-box">
-                <div class="feature-icon">📸</div>
-                <div class="feature-title">一键评分</div>
-                <div class="feature-desc">专业构图光影分析</div>
-            </div>""", unsafe_allow_html=True)
-        with f2:
-            st.markdown("""<div class="feature-box">
-                <div class="feature-icon">🎨</div>
-                <div class="feature-title">参数直出</div>
-                <div class="feature-desc">LR/手机修图数据</div>
-            </div>""", unsafe_allow_html=True)
-        with f3:
-            st.markdown("""<div class="feature-box">
-                <div class="feature-icon">🎓</div>
-                <div class="feature-title">大师指导</div>
-                <div class="feature-desc">专属影像提升建议</div>
-            </div>""", unsafe_allow_html=True)
+        f1.markdown("📸 **一键评分**\n\n<small>专业分析</small>", unsafe_allow_html=True)
+        f2.markdown("🎨 **参数直出**\n\n<small>LR/醒图</small>", unsafe_allow_html=True)
+        f3.markdown("🎓 **大师指导**\n\n<small>构图建议</small>", unsafe_allow_html=True)
         st.markdown("---")
         
-        # Login Tabs
         login_tab1, login_tab2 = st.tabs(["💎 会员登录", "🎁 游客试用"])
         
+        # --- 会员 ---
         with login_tab1:
             with st.container(border=True):
-                phone_input = st.text_input("手机号码", placeholder="请输入注册手机号", max_chars=11, key="vip_phone")
-                code_input = st.text_input("激活码", placeholder="请输入专属 Key", type="password", key="vip_code")
+                phone_input = st.text_input("手机号码", max_chars=11, key="vip_phone")
+                code_input = st.text_input("激活码", type="password", key="vip_code")
                 
                 if st.button("会员登录", type="primary", use_container_width=True):
                     if not is_valid_phone(phone_input):
@@ -302,7 +291,7 @@ def show_login_page():
                                 if len(parts) == 3 and phone_input == parts[0].strip() and code_input == parts[1].strip():
                                     exp_date = datetime.strptime(parts[2].strip(), "%Y-%m-%d")
                                     if datetime.now() > exp_date:
-                                        st.error(f"❌ 您的服务已于 {parts[2]} 到期")
+                                        st.error(f"❌ 会员已于 {parts[2]} 到期")
                                         st.stop()
                                     login_success = True
                                     expire_date_str = parts[2]
@@ -323,18 +312,20 @@ def show_login_page():
                         except:
                             st.error("系统维护中")
 
+        # --- 游客 (严控逻辑：进门就查) ---
         with login_tab2:
             with st.container(border=True):
-                st.info(f"🎁 新用户免费试用 {MAX_GUEST_USAGE} 次")
-                guest_phone = st.text_input("手机号码", placeholder="请输入手机号", max_chars=11, key="guest_phone")
+                st.info(f"🎁 免费试用 {MAX_TOTAL_USAGE} 次 (专业模式限 {MAX_PRO_USAGE} 次)")
+                guest_phone = st.text_input("手机号码", max_chars=11, key="guest_phone")
                 
                 if st.button("开始试用", use_container_width=True):
                     if not is_valid_phone(guest_phone):
                         st.error("请输入有效的 11 位手机号码")
                     else:
-                        used_count = get_guest_usage(guest_phone)
-                        if used_count >= MAX_GUEST_USAGE:
-                            st.error("❌ 试用次数已用完")
+                        # 进门先查总账
+                        stats = get_guest_stats(guest_phone)
+                        if stats["total"] >= MAX_TOTAL_USAGE:
+                            st.error("❌ 试用次数已全部耗尽")
                             st.warning("请联系微信 **BayernGomez28** 购买正式会员。")
                         else:
                             st.session_state.logged_in = True
@@ -349,19 +340,10 @@ def show_login_page():
 
         st.caption("💎 购买会员请联系微信：**BayernGomez28**")
         
-        # 安装教程 (双栏保留)
-        with st.expander("📲 安装教程 (iPhone / Android)"):
+        with st.expander("📲 安装教程"):
             c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**🍎 iPhone / iPad**")
-                st.markdown("1. 使用 Safari 打开")
-                st.markdown("2. 点击底部 [分享] 图标")
-                st.markdown("3. 选择 [添加到主屏幕]")
-            with c2:
-                st.markdown("**🤖 Android 安卓**")
-                st.markdown("1. 推荐 Chrome / Edge")
-                st.markdown("2. 点击右上角菜单")
-                st.markdown("3. 选择 [添加到主屏幕]")
+            c1.markdown("**🍎 iPhone**\n\nSafari -> 分享 -> 添加到主屏幕")
+            c2.markdown("**🤖 Android**\n\nChrome -> 菜单 -> 添加到主屏幕")
 
 # ================= 5. 主程序 =================
 def show_main_app():
@@ -376,6 +358,7 @@ def show_main_app():
         [data-baseweb="input"] {background-color: #262626; color: white;}
         .logo-text {color: #E0E0E0 !important;}
         .result-card th {background-color: #333 !important; color: #fff !important;}
+        .locked-feature {background-color: #222; border: 1px dashed #555;}
         </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
@@ -386,17 +369,19 @@ def show_main_app():
         </div>
         """, unsafe_allow_html=True)
         
+        # 用户信息展示
         if st.session_state.user_role == 'vip':
             st.success(f"💎 正式会员: {st.session_state.user_phone}")
             st.caption(f"有效期: {st.session_state.expire_date}")
         else:
-            used = get_guest_usage(st.session_state.user_phone)
-            remain = MAX_GUEST_USAGE - used
-            st.warning(f"🎁 试用访客: {st.session_state.user_phone}")
-            st.progress(used/MAX_GUEST_USAGE, text=f"剩余次数: {remain}/{MAX_GUEST_USAGE}")
+            stats = get_guest_stats(st.session_state.user_phone)
+            t_rem = MAX_TOTAL_USAGE - stats['total']
+            p_rem = MAX_PRO_USAGE - stats['pro']
+            st.warning(f"🎁 访客: {st.session_state.user_phone}")
+            st.progress(stats['total']/MAX_TOTAL_USAGE, text=f"总次数: {t_rem}/{MAX_TOTAL_USAGE}")
+            st.caption(f"其中专业模式剩余: {p_rem} 次")
         
         st.markdown("---")
-        # 保留V38修复：模式切换自动清除报告
         mode_select = st.radio(
             "模式选择:", 
             ["📷 日常快评", "🧐 专业艺术"],
@@ -405,25 +390,34 @@ def show_main_app():
         )
 
         st.markdown("---")
+        # 🔴 游客限制：历史记录能看标题，不能看内容
         with st.expander("🕒 历史记录", expanded=False):
             if not st.session_state.history:
                 st.caption("暂无记录")
             else:
                 for idx, item in enumerate(reversed(st.session_state.history)):
                     with st.popover(f"📄 {item['time']} - {item['mode']}"):
-                        if item.get('img_base64'):
-                            st.markdown(f'<img src="data:image/jpeg;base64,{item["img_base64"]}" width="100%">', unsafe_allow_html=True)
-                        st.markdown(item['content'])
+                        if st.session_state.user_role == 'vip':
+                            if item.get('img_base64'):
+                                st.markdown(f'<img src="data:image/jpeg;base64,{item["img_base64"]}" width="100%">', unsafe_allow_html=True)
+                            st.markdown(item['content'])
+                        else:
+                            st.warning("🔒 历史详情仅限会员查看")
+                            st.caption("请联系 BayernGomez28 开通会员")
 
+        # 🔴 游客限制：收藏夹
         with st.expander("❤️ 我的收藏", expanded=False):
-            if not st.session_state.favorites:
-                st.caption("暂无收藏")
+            if st.session_state.user_role != 'vip':
+                st.warning("🔒 会员专属功能")
             else:
-                for idx, item in enumerate(st.session_state.favorites):
-                    with st.popover(f"⭐ 收藏 #{idx+1}"):
-                        if item.get('img_base64'):
-                            st.markdown(f'<img src="data:image/jpeg;base64,{item["img_base64"]}" width="100%">', unsafe_allow_html=True)
-                        st.markdown(item['content'])
+                if not st.session_state.favorites:
+                    st.caption("暂无收藏")
+                else:
+                    for idx, item in enumerate(st.session_state.favorites):
+                        with st.popover(f"⭐ 收藏 #{idx+1}"):
+                            if item.get('img_base64'):
+                                st.markdown(f'<img src="data:image/jpeg;base64,{item["img_base64"]}" width="100%">', unsafe_allow_html=True)
+                            st.markdown(item['content'])
 
         st.markdown("---")
         with st.expander("🛠️ 设置", expanded=True):
@@ -445,12 +439,13 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V39.0 Final")
+        st.caption("Ver: V40.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
+        check_mode = 'daily'
         active_prompt = """你是一位亲切的摄影博主“智影”。
 请严格按照 Markdown 格式输出，标题与内容之间空一行。
 # 🌟 综合评分: {分数}/10
@@ -462,7 +457,6 @@ def show_main_app():
 | 参数项 | 推荐数值 (预估) | 调整理由 |
 | :--- | :--- | :--- |
 | ... | ... | ... |
-*(请给出具体的正负数值，如 +10, -5)*
 
 ### 📸 随手拍建议
 ...
@@ -474,6 +468,7 @@ def show_main_app():
         banner_bg = "#e8f5e9" if not st.session_state.dark_mode else "#1b5e20"
     else:
         real_model = "gemini-2.5-flash"
+        check_mode = 'pro'
         active_prompt = """你是一位视觉总监“智影”。
 请严格按照 Markdown 格式输出，标题与内容之间空一行。
 # 🏆 艺术总评: {分数}/10
@@ -485,7 +480,6 @@ def show_main_app():
 | 模块 | 参数项 | 推荐数值 | 专业解析 |
 | :--- | :--- | :--- | :--- |
 | ... | ... | ... | ... |
-*(请包含曲线、HSL、分离色调等高级参数)*
 
 ### 🎓 大师进阶课
 ...
@@ -510,16 +504,18 @@ def show_main_app():
     """, unsafe_allow_html=True)
 
     if st.session_state.user_role == 'guest':
-        remain = MAX_GUEST_USAGE - get_guest_usage(st.session_state.user_phone)
+        stats = get_guest_stats(st.session_state.user_phone)
+        t_rem = MAX_TOTAL_USAGE - stats['total']
         st.markdown(f"""
         <div class="trial-banner">
-            🎁 游客试用模式：还剩 <b>{remain}</b> 次机会。满意请联系微信 <b>BayernGomez28</b> 开通会员！
+            🎁 游客模式：总剩余 <b>{t_rem}</b> 次 (专业模式仅 1 次) <br> 
+            满意请联系微信 <b>BayernGomez28</b>
         </div>
         """, unsafe_allow_html=True)
 
     tab1, tab2 = st.tabs(["📂 上传照片", "📷 现场拍摄"])
     
-    # 保留V38修复：动态Key
+    # 使用动态Key强制刷新
     with tab1:
         f = st.file_uploader(
             "支持 JPG/PNG", 
@@ -533,7 +529,6 @@ def show_main_app():
         c = st.camera_input("点击拍摄", key="cam_file", on_change=clear_upload)
         if c: st.session_state.current_image = Image.open(c).convert('RGB')
 
-    # 保留V38修复：重置更新Key
     if st.button("🗑️ 清空重置 / 换张图", use_container_width=True, on_click=reset_all):
         st.rerun()
 
@@ -549,41 +544,43 @@ def show_main_app():
                     with st.expander("📷 拍摄参数"): st.json(exif)
         
         with c2:
-            # 保留 V37 修复：带缓存的 AI 调用
-            @st.cache_data(show_spinner=False, ttl=3600)
-            def generate_ai_analysis(img_bytes, prompt, model_name):
-                try:
-                    img = Image.open(io.BytesIO(img_bytes))
-                    cfg = genai.types.GenerationConfig(temperature=0.0)
-                    m = genai.GenerativeModel(model_name, system_instruction=prompt)
-                    res = m.generate_content([img, "分析此图。"], generation_config=cfg)
-                    return res.text
-                except Exception as e:
-                    return f"ERROR: {e}"
-
             if not st.session_state.current_report:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：想修出日系感...")
                 
                 if st.button("🚀 开始评估", type="primary", use_container_width=True):
+                    # === 🔴 权限扣费检查 ===
                     if st.session_state.user_role == 'guest':
+                        # 1. 检查是否同图操作 (防刷)
                         current_hash = get_image_hash(st.session_state.current_image)
                         if st.session_state.last_img_hash != current_hash:
-                            current_usage = get_guest_usage(st.session_state.user_phone)
-                            if current_usage >= MAX_GUEST_USAGE:
-                                st.error("❌ 试用次数已用完！")
-                                st.info("请联系微信 **BayernGomez28** 购买正式会员。")
+                            # 2. 检查权限
+                            allowed, msg = check_guest_permission(st.session_state.user_phone, check_mode)
+                            if not allowed:
+                                st.error(msg)
+                                st.info("请联系微信 **BayernGomez28** 开通会员。")
                                 st.stop()
                             else:
-                                save_guest_usage(st.session_state.user_phone)
-                    
+                                # 扣费
+                                update_guest_usage(st.session_state.user_phone, check_mode)
+
                     with st.status(status_msg, expanded=True) as s:
-                        logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone}")
+                        logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone} | Mode: {check_mode}")
                         
                         img_byte_arr = io.BytesIO()
                         st.session_state.current_image.save(img_byte_arr, format='JPEG')
                         img_bytes = img_byte_arr.getvalue()
                         
-                        ai_result = generate_ai_analysis(img_bytes, active_prompt, real_model)
+                        # 带缓存调用
+                        @st.cache_data(show_spinner=False, ttl=3600)
+                        def cached_ai(img_b, prompt, model):
+                            try:
+                                im = Image.open(io.BytesIO(img_b))
+                                cfg = genai.types.GenerationConfig(temperature=0.0)
+                                m = genai.GenerativeModel(model, system_instruction=prompt)
+                                return m.generate_content([im, "分析"], generation_config=cfg).text
+                            except Exception as e: return f"ERROR: {e}"
+
+                        ai_result = cached_ai(img_bytes, active_prompt, real_model)
                         
                         if "ERROR:" in ai_result:
                             st.error(ai_result)
@@ -598,6 +595,7 @@ def show_main_app():
                 st.markdown(f'<div class="result-card">{st.session_state.current_report}</div>', unsafe_allow_html=True)
                 
                 img_b64 = img_to_base64(st.session_state.current_image)
+                # 存历史 (无论游客会员都存，但游客不能看详情)
                 if not st.session_state.history or st.session_state.history[-1]['content'] != st.session_state.current_report:
                     record = {"time": datetime.now().strftime("%H:%M"), "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
                     st.session_state.history.append(record)
@@ -605,14 +603,22 @@ def show_main_app():
 
                 btn_c1, btn_c2 = st.columns(2)
                 with btn_c1:
-                    html_report = create_html_report(st.session_state.current_report, st.session_state.get('current_req', ''), img_b64)
-                    st.download_button("📥 下载报告", html_report, file_name="智影报告.html", mime="text/html", use_container_width=True)
+                    # 🔴 游客限制：下载
+                    if st.session_state.user_role == 'vip':
+                        html_report = create_html_report(st.session_state.current_report, st.session_state.get('current_req', ''), img_b64)
+                        st.download_button("📥 下载报告", html_report, file_name="智影报告.html", mime="text/html", use_container_width=True)
+                    else:
+                        st.button("📥 下载报告 (会员)", disabled=True, use_container_width=True)
                 
                 with btn_c2:
-                    if st.button("❤️ 加入收藏", use_container_width=True):
-                        record = {"time": datetime.now().strftime("%H:%M"), "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
-                        st.session_state.favorites.append(record)
-                        st.toast("已收藏！", icon="⭐")
+                    # 🔴 游客限制：收藏
+                    if st.session_state.user_role == 'vip':
+                        if st.button("❤️ 加入收藏", use_container_width=True):
+                            record = {"time": datetime.now().strftime("%H:%M"), "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
+                            st.session_state.favorites.append(record)
+                            st.toast("已收藏！", icon="⭐")
+                    else:
+                        st.button("❤️ 加入收藏 (会员)", disabled=True, use_container_width=True)
 
 if __name__ == "__main__":
     if st.session_state.logged_in:
