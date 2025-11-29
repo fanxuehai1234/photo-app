@@ -25,45 +25,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- 🌿 核心修复：内置高清质感叶子 (不再是丑陋的线条图) ---
-LEAF_ICON_B64 = """
-data:image/png;base64,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
-"""
+# --- 🍃 修复：回归 V37 的 SVG 图标 (绝对稳定显示) ---
+LEAF_ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRDQUY1MCI+PHBhdGggZD0iTTE3LDhDOCwxMCw1LjksMTYuMTcsMy44MiwyMS4zNEw1LjcxLDIybDEtMi4zQTQuNDksNC40OSwwLDAsMCw4LDIwQzE5LDIwLDIyLDMsMjIsMywyMSw1LDE0LDUuMjUsOSw2LjI1UzIsMTEuNSwyLDEzLjVhNi4yMiw2LjIyLDAsMCwwLDEuNzUsMy43NUM3LDgsMTcsOCwxNyw4WiIvPjwvc3ZnPg=="
 
 st.set_page_config(
     page_title="智影 | AI 影像顾问", 
-    page_icon="icon.png", 
+    page_icon="🌿", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ================= 1. CSS 美化 =================
+# ================= 1. CSS 深度美化 =================
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -73,14 +45,13 @@ st.markdown("""
     
     .block-container {
         padding-top: 1rem !important;
-        padding-bottom: 2rem !important;
+        padding-bottom: 3rem !important;
     }
     
     section[data-testid="stSidebar"] {
         display: block;
     }
     
-    /* 结果卡片 */
     .result-card {
         background-color: #f8f9fa;
         border-left: 5px solid #4CAF50;
@@ -111,7 +82,7 @@ st.markdown("""
         border-radius: 8px;
     }
 
-    /* 手机端功能介绍区 (Flex布局) */
+    /* 手机端功能区 Flex布局 */
     .feature-container {
         display: flex;
         flex-direction: row;
@@ -138,7 +109,7 @@ st.markdown("""
         .feature-item { font-size: 12px; }
     }
 
-    /* 安装教程 (强制两栏表格) */
+    /* 安装教程双栏 */
     .install-table {
         width: 100%;
         border-collapse: separate;
@@ -177,7 +148,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ================= 2. 逻辑引擎 =================
-
 def is_valid_phone(phone):
     pattern = r"^1[3-9]\d{9}$"
     return bool(re.match(pattern, phone))
@@ -230,6 +200,10 @@ def get_image_hash(image):
 
 def configure_random_key():
     try:
+        # 修复：更稳健的 Secrets 读取，防止报错
+        if "API_KEYS" not in st.secrets:
+            st.error("⚠️ 后台未配置 API_KEYS")
+            return False
         keys = st.secrets["API_KEYS"]
         key_list = [keys] if isinstance(keys, str) else keys
         current_key = random.choice(key_list)
@@ -309,34 +283,32 @@ def reset_all():
     if 'current_image' in st.session_state: del st.session_state['current_image']
     st.session_state.uploader_key += 1 
 
-# ================= 4. 登录页 =================
+# ================= 4. 登录页 (修复：SVG图标 & 点击逻辑) =================
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     
     with col_poster:
-        # 🔴 修复：强制读取 GitHub 里的 icon.png
         if os.path.exists("icon.png"):
             st.image("icon.png", use_container_width=True)
         else:
-            st.error("⚠️ 请上传 icon.png")
+            # 兜底：如果 icon.png 还没传，显示占位符
+            st.warning("⚠️ 请在 GitHub 上传 icon.png (您的黑色相机图)")
         
-        # 🔴 修复：文艺金句已加回
         st.markdown('<div style="text-align:center; color:#888; font-size:14px; margin-top:5px; font-style:italic;">“ 光影之处，皆是生活 ”</div>', unsafe_allow_html=True)
 
     with col_login:
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # 🔴 修复：这里强制显示叶子图标
+        # 🟢 修复：使用 SVG 图标 (绝对显示)
         st.markdown(f"""
         <div style="display:flex; align-items:center; margin-bottom:20px;">
-            <img src="{LEAF_ICON_B64}" style="width:50px; height:50px; margin-right:15px;">
+            <img src="{LEAF_ICON}" style="width:50px; height:50px; margin-right:15px;">
             <h1 style="margin:0;">智影</h1>
         </div>
         """, unsafe_allow_html=True)
             
         st.markdown("#### 您的 24小时 AI 摄影私教")
 
-        # 🔴 修复：手机功能介绍区 (Flex布局)
         st.markdown("""
         <div class="feature-container">
             <div class="feature-item"><span class="feature-icon">📸</span><br><b>一键评分</b><br>专业分析</div>
@@ -347,6 +319,7 @@ def show_login_page():
         
         login_tab1, login_tab2 = st.tabs(["💎 会员登录", "🎁 游客试用"])
         
+        # --- 会员登录 ---
         with login_tab1:
             with st.container(border=True):
                 phone_input = st.text_input("手机号码", max_chars=11, key="vip_phone")
@@ -356,20 +329,27 @@ def show_login_page():
                     if not is_valid_phone(phone_input):
                         st.error("请输入正确的 11 位手机号码")
                     else:
-                        try:
+                        # 🟢 修复：更稳健的读取逻辑，不再报“系统维护中”
+                        if "VALID_ACCOUNTS" not in st.secrets:
+                            st.error("⚠️ 后台 VALID_ACCOUNTS 未配置")
+                        else:
                             valid_accounts = st.secrets["VALID_ACCOUNTS"]
                             login_success = False
                             expire_date_str = ""
+                            
                             for account_str in valid_accounts:
-                                parts = account_str.split(":")
-                                if len(parts) == 3 and phone_input == parts[0].strip() and code_input == parts[1].strip():
-                                    exp_date = datetime.strptime(parts[2].strip(), "%Y-%m-%d")
-                                    if datetime.now() > exp_date:
-                                        st.error(f"❌ 您的服务已于 {parts[2]} 到期")
-                                        st.stop()
-                                    login_success = True
-                                    expire_date_str = parts[2]
-                                    break
+                                try:
+                                    parts = account_str.split(":")
+                                    if len(parts) == 3 and phone_input == parts[0].strip() and code_input == parts[1].strip():
+                                        exp_date = datetime.strptime(parts[2].strip(), "%Y-%m-%d")
+                                        if datetime.now() > exp_date:
+                                            st.error(f"❌ 您的服务已于 {parts[2]} 到期")
+                                            # 使用 return 提前结束，防止继续执行
+                                            st.stop() 
+                                        login_success = True
+                                        expire_date_str = parts[2]
+                                        break
+                                except: continue
                             
                             if login_success:
                                 st.session_state.logged_in = True
@@ -383,9 +363,8 @@ def show_login_page():
                                 st.rerun()
                             else:
                                 st.error("账号或激活码错误")
-                        except:
-                            st.error("系统维护中")
 
+        # --- 游客登录 ---
         with login_tab2:
             with st.container(border=True):
                 st.info(f"🎁 新用户免费试用 {MAX_TOTAL_USAGE} 次 (专业模式限 {MAX_PRO_USAGE} 次)")
@@ -412,7 +391,6 @@ def show_login_page():
 
         st.caption("💎 购买会员请联系微信：**BayernGomez28**")
         
-        # 🔴 修复：双栏安装教程
         with st.expander("📲 安装教程 (iPhone / Android)"):
             st.markdown("""
             <table class="install-table">
@@ -457,10 +435,10 @@ def show_main_app():
         </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
-        # 🔴 修复：侧边栏 Logo
+        # 🟢 修复：侧边栏 Logo (SVG)
         st.markdown(f"""
         <div class="logo-header" style="display:flex; align-items:center; margin-bottom:10px;">
-            <img src="{LEAF_ICON_B64}" style="width:30px; height:30px; margin-right:10px;">
+            <img src="{LEAF_ICON}" style="width:30px; height:30px; margin-right:10px;">
             <h3 style="margin:0; font-size:1.2rem;">用户中心</h3>
         </div>
         """, unsafe_allow_html=True)
@@ -532,7 +510,7 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V43.0 Final")
+        st.caption("Ver: V45.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
@@ -585,9 +563,10 @@ def show_main_app():
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
         banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
 
+    # 🟢 修复：主页 Logo (SVG)
     st.markdown(f"""
     <div class="logo-header" style="display:flex; align-items:center; margin-bottom:20px;">
-        <img src="{LEAF_ICON_B64}" style="width:50px; height:50px; margin-right:15px;">
+        <img src="{LEAF_ICON}" style="width:50px; height:50px; margin-right:15px;">
         <h1 style="margin:0;">智影 | 影像私教</h1>
     </div>
     """, unsafe_allow_html=True)
