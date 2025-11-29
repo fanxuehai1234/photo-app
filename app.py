@@ -26,7 +26,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- 🌿 核心修复：内置高清质感叶子 (不再是丑陋的线条图) ---
-# 这是一张非常有质感的绿色叶子图片编码
 LEAF_ICON_B64 = """
 data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAACXBIWXMAAAsTAAALEwEAmpwYAAAF
 WElEQVR4nO2ZS2xcVxXH/zf3zjN2/Mh2bCdpE5I2TdooIoVIKCi0YsGCBbJgF1VIXbCAKsSulCoV
@@ -43,10 +42,10 @@ zs6+OT09fUlELhhjUkopISIBAGD37t0wMzMDU1NT4JwDAGCMgVarBetra7C6ugqO4wAAgDEGYwx2
 dnYgyzJExCsi8nq9Xn+j2Wz+vd/vu+8kEVIqld6YnZ19c3p6+nMickFEBhEhAAAcx4H5+XmYn5+H
 crk8cM/3fdja2oK1tTVYWVkB13UBAFBKAcYYZFnmnPevZln2l3q9/maz2fxHv9/HdyIRUqlUzr00
 Pz//hxfm578gIhcppTQRAQCAUgrz8/MbhIx6LyIClUoFKpUKrK6uDkIkyzJkjLki8l6WZX/e3Ny8
-vLy8/E6r1Wru7u7iO5EIEeH83Nzc21NTUy+IyHljTEopJYgIWGsHIzI1NTV2z16vBysrK7C6ugqe
+vLy8/E6r1Wru7u7iO5EIEeH83Nzc21NTUy+IyHljTEopJYgIWGsHIzI1NTX2z16vBysrK7C6ugqe
 5wEAGISE9x6yLHPO+6uO47zVarXebDab/+z3++67SkRKiIuLi4tvVavVyyJySUQGjDFIRMIYg/n
 5eZibm4NKpTL2/M7ODvh+eaPb7QIAgFIKjDHIssw55686jvNWvV5/s9Vq/bvX6+F3IhFSqVTOzcz
-vD0zM/O8iFwUkXLGGMQYg+npaZibm4NyuTz2vOM44LourKyswNraGvi+DwAASinEGMM5B1mWWe/9
+MvD0zM/O8iFwUkXLGGMQYg+npaZibm4NyuTz2vOM44LourKyswNraGvi+DwAASinEGMM5B1mWWe/9
 Vcdx3qpWq2+1Wq3LvV4P34lERAhxYX5+/o3p6ek3ROSiMSZVSgkAAMYYzM3NwczMDFQqlaHnoyiC
 er0OKysr0Ol0AAAgIjjnAACQZRkS4hURebNarV5uNpv/6vf7uN+JSAghzs/Ozr45PT39uYhcNMak
 lFJCRAIAgDEGs7OzMDc3B+Vyeeie7/uwtbUFa2tr0Gw2AQDAWgs7OzuQZRki4hUReb1er7/RbDb/
@@ -59,7 +58,7 @@ q9XLInJJRAaMMUhEwhiD+fl5mJubg0qlMvb8zs4O+H55o9vtAgCAUgqMMciyzDnnrzqO81a9Xn+z
 
 st.set_page_config(
     page_title="智影 | AI 影像顾问", 
-    page_icon="🌿", 
+    page_icon="icon.png", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -81,7 +80,7 @@ st.markdown("""
         display: block;
     }
     
-    /* 结果卡片优化：支持左右滑动 */
+    /* 结果卡片 */
     .result-card {
         background-color: #f8f9fa;
         border-left: 5px solid #4CAF50;
@@ -92,12 +91,26 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         overflow-x: auto;
     }
+    .result-card table {
+        width: 100%;
+        min-width: 300px;
+        border-collapse: collapse;
+    }
+    .result-card th, .result-card td {
+        border: 1px solid #e0e0e0;
+        padding: 8px;
+        text-align: left;
+    }
+    .result-card th {
+        background-color: #e8f5e9;
+        color: #2E7D32;
+    }
     
     .stButton>button {
         font-weight: bold;
         border-radius: 8px;
     }
-    
+
     /* 手机端功能介绍区 (Flex布局) */
     .feature-container {
         display: flex;
@@ -296,21 +309,24 @@ def reset_all():
     if 'current_image' in st.session_state: del st.session_state['current_image']
     st.session_state.uploader_key += 1 
 
-# ================= 4. 登录页 (修复：强制读取本地icon.png) =================
+# ================= 4. 登录页 =================
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     
     with col_poster:
-        # 🔴 核心修复：强制使用 GitHub 里的 icon.png
+        # 🔴 修复：强制读取 GitHub 里的 icon.png
         if os.path.exists("icon.png"):
             st.image("icon.png", use_container_width=True)
         else:
-            st.error("⚠️ 严重错误：请在 GitHub 上传 icon.png (您的黑色相机图)")
+            st.error("⚠️ 请上传 icon.png")
+        
+        # 🔴 修复：文艺金句已加回
+        st.markdown('<div style="text-align:center; color:#888; font-size:14px; margin-top:5px; font-style:italic;">“ 光影之处，皆是生活 ”</div>', unsafe_allow_html=True)
 
     with col_login:
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # 使用内置 Base64 显示叶子图标 (绝对不会错)
+        # 🔴 修复：叶子图标已加回 (Base64)
         st.markdown(f"""
         <div style="display:flex; align-items:center; margin-bottom:20px;">
             <img src="{LEAF_ICON_B64}" style="width:50px; height:50px; margin-right:15px;">
@@ -320,7 +336,7 @@ def show_login_page():
             
         st.markdown("#### 您的 24小时 AI 摄影私教")
 
-        # 功能介绍 (手机适配)
+        # 🔴 修复：手机功能介绍区 (Flex布局)
         st.markdown("""
         <div class="feature-container">
             <div class="feature-item"><span class="feature-icon">📸</span><br><b>一键评分</b><br>专业分析</div>
@@ -396,7 +412,7 @@ def show_login_page():
 
         st.caption("💎 购买会员请联系微信：**BayernGomez28**")
         
-        # 安装教程 (双栏)
+        # 🔴 修复：双栏安装教程
         with st.expander("📲 安装教程 (iPhone / Android)"):
             st.markdown("""
             <table class="install-table">
@@ -437,9 +453,11 @@ def show_main_app():
         .result-card th {background-color: #333 !important; color: #fff !important;}
         .feature-container {background-color: #262626 !important; color: #eee;}
         .install-col {background-color: #262626 !important; border: 1px solid #444 !important;}
+        .install-steps {color: #ccc !important;}
         </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
+        # 🔴 修复：侧边栏 Logo
         st.markdown(f"""
         <div class="logo-header" style="display:flex; align-items:center; margin-bottom:10px;">
             <img src="{LEAF_ICON_B64}" style="width:30px; height:30px; margin-right:10px;">
@@ -514,7 +532,7 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V42.0 Final")
+        st.caption("Ver: V43.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
@@ -532,6 +550,7 @@ def show_main_app():
 | 参数项 | 推荐数值 (预估) | 调整理由 |
 | :--- | :--- | :--- |
 | ... | ... | ... |
+*(请给出具体的正负数值，如 +10, -5)*
 
 ### 📸 随手拍建议
 ...
@@ -565,6 +584,7 @@ def show_main_app():
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
         banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
 
+    # 🔴 修复：主页 Logo
     st.markdown(f"""
     <div class="logo-header" style="display:flex; align-items:center; margin-bottom:20px;">
         <img src="{LEAF_ICON_B64}" style="width:50px; height:50px; margin-right:15px;">
@@ -579,12 +599,10 @@ def show_main_app():
     """, unsafe_allow_html=True)
 
     if st.session_state.user_role == 'guest':
-        stats = get_guest_stats(st.session_state.user_phone)
-        t_rem = MAX_TOTAL_USAGE - stats['total']
+        remain = MAX_GUEST_USAGE - get_guest_usage(st.session_state.user_phone)
         st.markdown(f"""
         <div class="trial-banner">
-            🎁 游客模式：总剩余 <b>{t_rem}</b> 次 (专业模式仅 1 次) <br> 
-            满意请联系微信 <b>BayernGomez28</b>
+            🎁 游客试用模式：还剩 <b>{remain}</b> 次机会。满意请联系微信 <b>BayernGomez28</b> 开通会员！
         </div>
         """, unsafe_allow_html=True)
 
