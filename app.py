@@ -12,7 +12,7 @@ import logging
 import sys
 import json
 
-# ================= 0. 核心配置 & 日志 =================
+# ================= 0. 核心配置 =================
 warnings.filterwarnings("ignore")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -23,44 +23,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- 核心：内置高清透明叶子图标 (Base64编码) ---
-# 这是一段可以直接被浏览器识别的图片代码，无需 leaf.png 文件
-LEAF_ICON_B64 = """
-data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAABGdBTUEAALGPC/xhBQAAACBjSFJN
-AAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAABmJLR0QA/wD/AP+gvaeTAAAA
-CXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5wsbFhQVw2vRZQAABqVJREFUaN7tmXtsW3cZx7/n
-4rxf69hO7CTO69YmXdctXdctXdc1G926dWs31oFAY6Bogx8TEhJCgBSYhBA72iRqm7RNQKvYxLgx
-GNt4iZ3YcRzHSezYiR3fnsR5X+c9fzjO7Vvf5MZp0/mRjq495/t8v9/3+z2/8x0h/o+E+F/f4O2k
-q6vrSCqV6ksmk0cSiUR/Op0+kkql+lOpVF8ikTiSSCT6Ozo6jhw6dOhIe3v7kfb29v+7Rnt7+5GO
-jo6+ZDLZn0ql+hOJxJFkMnmkq6vrSDwe/8O+ffv+eNddd/1x3759fxwZGYnH4/E/tbS0HInFYn9I
-pVL9iUTiSDyZTPYnEom+ZDLZ19HRcWRkZOQPo6Ojf9i/f/8fR0ZG/rBv374/joyMxOPx+J/a29uP
-dHR09CWTyf5EItGfSCQ6E4lEXyKROJJOp4+0tLQciXK5/Ie9e/f+YWRk5A/79u3748jISDwej/9p
-3759Rzo6Oo6kUqm+ZDI5kEgk+hOJxJF4PH6kpaXlSCwW+8PevXv/MDY29oc9e/b8YWRkJB6Px//U
-3t5+JBaL9SWTyf5UKtWfSCSOJJPJI9FodCCRSBxpbm7+Q1dXV19bW1tfW1tbX1tbW9/Q0NAXj8f7
-YrHYkfb29iOxWKwvmUz2JxKJo4lEoj+ZTB6JRCID8Xj8SFNT0x/a2tr6Wlpa+lpaWvpaWlr6Ghoa
-+uLx+EA8Hh+IxWJ9yWSyP5VKHU0kEkfT6fSRaDQ6EI/HjzQ1Nf2hvb29r6Wlpa+lpaWvpaWlr7Gx
-sS8ejw/E4/GBWCzWl0wm+1OpVH8ikTiSTCaPRKPRgXg8fqSpqekP7e3tfS0tLX0tLS19LS0tfY2N
-jX3xeHwgHo8PxGKxvmQy2Z9KpY4mEomj6XT6SDQaHYjH40eampr+0N7e3tfS0tLX0tLS19LS0tfY
-2NgXj8cH4vH4QCwW60smk/2pVKo/kUgcTSaTR6LR6EA8Hj/S1NT0h/b29r6Wlpa+lpaWvpaWlr7G
-xsa+eDw+EI/HB2KxWF8ymexPpVJHE4nE0XQ6fSQajQ7E4/EjTU1Nf2hvb+9raWnpa2lp6Wtpaelr
-bGzsi8fjA/F4fCAWi/Ulk8n+VCrVn0gkjiYTicF0On2kpaXlD21tbX0tLS19LS0tfS0tLX2NjY19
-8Xh8IB6PD8Risb5kMtmfSqWOJhKJo+l0+kg0Gh2Ix+NHmpqa/tDe3t7X0tLS19LS0tfS0tLX2NjY
-F4/HB+Lx+EAsFutLJpP9qVSqP5FIHE0mkkdj0dhAMpk80tTU9If29va+lpaWvpaWlr6Wlpa+xsbG
-vng8PhCPxwdisVhfMpn8H0kk+pPJ5JF0On0kGo0OxOPxI01NTX9ob2/va2lp6WtpaelraWnpawg2
-9kXj8YF4PD4Qi8X6kslkfyqVOppIJI6m0+kj0Wh0IB6PH2lqavpDe3t7X0tLS19LS0tfS0tLX2Nj
-Y188Hh+Ix+MDsVisL5lM9qdSqf5EInE0mUwejUajA/F4/EhTU9Mf2tvb+1paWvpaWlraW1ta+hob
-G/vi8fhAPB4fiMVifclksj+VSh1NJBJH0+n0kWg0OhCPx480NTX9ob29va+lpaW9paWlvaWlpa+x
-sbEvHo8PxOPxgVgs1pdMJvtTqVR/IpE4mkwmj0Sj0YF4PH6kqanpD+3t7X0tLS3tLS0t7S0tLX2N
-jY198Xh8IB6PD8Risb5kMtmfSqWOJhKJo+l0+kg0Gh2Ix+NHmpqa/tDe3t7X0tLS3tLS0t7S0tLX
-2NjYF4/HB+Lx+EAsFutLJpP9qVSqP5FIHE0mkkcj0ehALB4faGpq+kNbe3t7S0tLe0tLS3tLS0tf
-Y2NjXzweH4jH4wOxWKwvmdx7NJVK9ScSiaPpRGIwnU4faWlpeS/a2traW1pa2ltbW9tbW1v7Ghoa
-+uLx+EA8Hh+IxWJ9yWTyaCqV6k8kEkeTyWQwGo0OxOPxgdbW1veira2tr6Wlpb2lpaW9tbW1r6Gh
-oS8ejw/E4/GBWCzWl0wmj6ZSqaOJROJoOp0+Eo1GB+Lx+EBzc/N70d7e3tfS0tLe0tLS3tLS0tfQ
-0NAXj8cH4vH4QCwW60smk/2pVOpoIpE4mk4mj0Sj0YFYLD7Q3Nz8XrS3t/e1tLS0t7S0tLe0tPQ1
-NDT0xePxgXg8PhCLxfqSyWR/KpXqTyQSR5PJ5JFINDoQj8cHmpqa3ou2tra+lpaW9paWlvaWlpa+
-hobGvng8PhCPxwdisVhfMpn8/0gikTiaTqePRKPRgXg8PtDU1PRe/B+g9u/8Q/4V+gAAAABJRU5E
-rkJggg==
-"""
+# --- 核心：矢量级绿色叶子图标 (SVG Base64) ---
+# 这是一个绝对清晰、加载极快的绿色叶子图标，代码内置，永不丢失
+LEAF_ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRDQUY1MCI+PHBhdGggZD0iTTE3LDhDOCwxMCw1LjksMTYuMTcsMy44MiwyMS4zNEw1LjcxLDIybDEtMi4zQTQuNDksNC40OSwwLDAsMCw4LDIwQzE5LDIwLDIyLDMsMjIsMywyMSw1LDE0LDUuMjUsOSw2LjI1UzIsMTEuNSwyLDEzLjVhNi4yMiw2LjIyLDAsMCwwLDEuNzUsMy43NUM3LDgsMTcsOCwxNyw4WiIvPjwvc3ZnPg=="
 
 st.set_page_config(
     page_title="智影 | AI 影像顾问", 
@@ -69,29 +34,27 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================= 1. CSS 暴力美化 (去除水印 & 对齐优化) =================
+# ================= 1. CSS 深度美化 =================
 st.markdown("""
     <style>
-    /* 隐藏顶部红线、汉堡菜单、底部Footer、右下角水印 */
+    /* 基础清理 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    .stDeployButton {display:none;}
-    div[data-testid="stStatusWidget"] {visibility: hidden;}
     div[class^="viewerBadge"] {display: none !important;} 
     
-    /* 手机端顶部留白消除 */
+    /* 手机端间距优化 */
     .block-container {
         padding-top: 1rem !important;
-        padding-bottom: 3rem !important;
+        padding-bottom: 2rem !important;
     }
     
-    /* 强制侧边栏显示 */
+    /* 侧边栏强制显示 */
     section[data-testid="stSidebar"] {
         display: block;
     }
     
-    /* 结果卡片美化 */
+    /* 结果卡片 */
     .result-card {
         background-color: #f8f9fa;
         border-left: 5px solid #4CAF50;
@@ -102,14 +65,43 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     
+    /* 按钮样式 */
     .stButton>button {
         font-weight: bold;
         border-radius: 8px;
     }
+    
+    /* 登录页文艺金句样式 */
+    .login-quote {
+        text-align: center;
+        color: #888;
+        font-family: 'Georgia', serif;
+        font-style: italic;
+        margin-top: 15px;
+        font-size: 16px;
+    }
+    
+    /* 标题图标对齐容器 */
+    .logo-header {
+        display: flex; 
+        align-items: center; 
+        margin-bottom: 20px;
+    }
+    .logo-img {
+        width: 40px; 
+        height: 40px; 
+        margin-right: 12px;
+    }
+    .logo-text {
+        margin: 0; 
+        font-size: 1.8rem; 
+        font-weight: 700;
+        line-height: 1.2;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 2. 状态初始化 & 缓存清理 =================
+# ================= 2. 状态初始化 =================
 def init_session_state():
     defaults = {
         'logged_in': False,
@@ -128,7 +120,6 @@ def init_session_state():
 
 init_session_state()
 
-# 图片互斥清理逻辑
 def clear_camera():
     if 'cam_file' in st.session_state: del st.session_state['cam_file']
     st.session_state.current_report = None
@@ -188,23 +179,24 @@ def img_to_base64(image):
         return base64.b64encode(buffered.getvalue()).decode()
     except: return ""
 
-# ================= 4. 登录页 =================
+# ================= 4. 登录页 (含叶子图标修复 + 文艺金句) =================
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     
     with col_poster:
-        # 左侧依然使用 Unsplash 的相机大片 (直接链接，无需上传)
         st.image("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=1000&auto=format&fit=crop", 
                  use_container_width=True)
+        # ★★★ 新增：文艺金句 ★★★
+        st.markdown('<div class="login-quote">“ 光影之处，皆是生活 ”</div>', unsafe_allow_html=True)
 
     with col_login:
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # ★★★ 使用内置 Base64 显示叶子图标 ★★★
+        # ★★★ 修复：强制显示叶子图标 (使用 Flexbox 布局) ★★★
         st.markdown(f"""
-        <div style="display: flex; align-items: center; margin-bottom: 20px;">
-            <img src="{LEAF_ICON_B64}" style="width: 50px; height: 50px; margin-right: 15px;">
-            <h1 style="margin:0; font-size: 2.5rem;">智影</h1>
+        <div class="logo-header">
+            <img src="{LEAF_ICON}" class="logo-img">
+            <h1 class="logo-text">智影</h1>
         </div>
         """, unsafe_allow_html=True)
             
@@ -259,14 +251,16 @@ def show_main_app():
         .result-card {background-color: #1E1E1E; color: #E0E0E0;}
         section[data-testid="stSidebar"] {background-color: #1E1E1E;}
         [data-baseweb="input"] {background-color: #262626; color: white;}
+        /* 深色模式下标题文字变白 */
+        .logo-text {color: #E0E0E0 !important;}
         </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
-        # ★★★ 侧边栏 Logo (Base64) ★★★
+        # ★★★ 侧边栏 Logo 修复 ★★★
         st.markdown(f"""
-        <div style="display: flex; align-items: center; margin-bottom: 20px;">
-            <img src="{LEAF_ICON_B64}" style="width: 40px; height: 40px; margin-right: 10px;">
-            <h3 style="margin:0;">用户中心</h3>
+        <div class="logo-header" style="margin-bottom: 10px;">
+            <img src="{LEAF_ICON}" class="logo-img" style="width:30px; height:30px;">
+            <h3 style="margin:0; font-size:1.2rem;">用户中心</h3>
         </div>
         """, unsafe_allow_html=True)
         
@@ -317,7 +311,7 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V29.0 Final")
+        st.caption("Ver: V30.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
@@ -366,11 +360,11 @@ def show_main_app():
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
         banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
 
-    # 主页 Header (Base64)
+    # ★★★ 主界面 Logo 修复 ★★★
     st.markdown(f"""
-    <div style="display: flex; align-items: center; margin-bottom: 20px;">
-        <img src="{LEAF_ICON_B64}" style="width: 50px; height: 50px; margin-right: 15px;">
-        <h1 style="margin:0;">智影 | 影像私教</h1>
+    <div class="logo-header">
+        <img src="{LEAF_ICON}" class="logo-img">
+        <h1 class="logo-text">智影 | 影像私教</h1>
     </div>
     """, unsafe_allow_html=True)
     
