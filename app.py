@@ -95,6 +95,24 @@ st.markdown("""
         margin-bottom: 15px;
         border: 1px solid #FFEEBA;
     }
+
+    /* 登录页特性宣传区 */
+    .feature-box {
+        text-align: center;
+        padding: 10px;
+    }
+    .feature-icon {
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+    }
+    .feature-title {
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    .feature-desc {
+        color: #666;
+        font-size: 0.9rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -194,7 +212,7 @@ def init_session_state():
         'current_report': None,
         'last_img_hash': None,
         'processing': False,
-        'uploader_key': 0, # 👈 新增：用于强制重置上传控件的ID
+        'uploader_key': 0,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -202,30 +220,23 @@ def init_session_state():
 
 init_session_state()
 
-# --- 关键回调函数 ---
+# --- 关键回调函数 (保留 V38 修复) ---
 def clear_report_only():
-    """切换模式时，只清空报告，保留图片"""
     st.session_state.current_report = None
-    # 不清除 last_img_hash，这样用户点按钮时可以触发新的一致性检查或重新生成
 
 def clear_camera():
     if 'cam_file' in st.session_state: del st.session_state['cam_file']
-    # 不清空报告，防止误触
 
 def clear_upload():
-    # 不清空报告
     pass
 
 def reset_all():
-    """彻底重置：清空图片、报告、并强制刷新上传控件"""
     st.session_state.current_report = None
     st.session_state.last_img_hash = None
     if 'current_image' in st.session_state: del st.session_state['current_image']
-    
-    # 🔥 核心修复：更新 Key，强制 Streamlit 重新渲染上传组件，从而清空文件名
     st.session_state.uploader_key += 1 
 
-# ================= 4. 登录页 =================
+# ================= 4. 登录页 (V39升级：高大上功能区) =================
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     
@@ -237,6 +248,7 @@ def show_login_page():
     with col_login:
         st.markdown("<br>", unsafe_allow_html=True)
         
+        # Header
         st.markdown(f"""
         <div style="display:flex; align-items:center; margin-bottom:20px;">
             <img src="{LEAF_ICON}" style="width:50px; height:50px; margin-right:15px;">
@@ -245,7 +257,31 @@ def show_login_page():
         """, unsafe_allow_html=True)
             
         st.markdown("#### 您的 24小时 AI 摄影私教")
+
+        # 🔥 V39升级：全新的功能宣传区 🔥
+        st.markdown("---")
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            st.markdown("""<div class="feature-box">
+                <div class="feature-icon">📸</div>
+                <div class="feature-title">一键评分</div>
+                <div class="feature-desc">专业构图光影分析</div>
+            </div>""", unsafe_allow_html=True)
+        with f2:
+            st.markdown("""<div class="feature-box">
+                <div class="feature-icon">🎨</div>
+                <div class="feature-title">参数直出</div>
+                <div class="feature-desc">LR/手机修图数据</div>
+            </div>""", unsafe_allow_html=True)
+        with f3:
+            st.markdown("""<div class="feature-box">
+                <div class="feature-icon">🎓</div>
+                <div class="feature-title">大师指导</div>
+                <div class="feature-desc">专属影像提升建议</div>
+            </div>""", unsafe_allow_html=True)
+        st.markdown("---")
         
+        # Login Tabs
         login_tab1, login_tab2 = st.tabs(["💎 会员登录", "🎁 游客试用"])
         
         with login_tab1:
@@ -301,7 +337,6 @@ def show_login_page():
                             st.error("❌ 试用次数已用完")
                             st.warning("请联系微信 **BayernGomez28** 购买正式会员。")
                         else:
-                            # 登录时不扣费
                             st.session_state.logged_in = True
                             st.session_state.user_phone = guest_phone
                             st.session_state.user_role = 'guest'
@@ -314,6 +349,7 @@ def show_login_page():
 
         st.caption("💎 购买会员请联系微信：**BayernGomez28**")
         
+        # 安装教程 (双栏保留)
         with st.expander("📲 安装教程 (iPhone / Android)"):
             c1, c2 = st.columns(2)
             with c1:
@@ -360,12 +396,12 @@ def show_main_app():
             st.progress(used/MAX_GUEST_USAGE, text=f"剩余次数: {remain}/{MAX_GUEST_USAGE}")
         
         st.markdown("---")
-        # 🔥 核心修复：模式切换触发 on_change，自动清除报告，露出按钮
+        # 保留V38修复：模式切换自动清除报告
         mode_select = st.radio(
             "模式选择:", 
             ["📷 日常快评", "🧐 专业艺术"],
             index=0,
-            on_change=clear_report_only # 👈 关键：切模式自动清除报告
+            on_change=clear_report_only
         )
 
         st.markdown("---")
@@ -409,7 +445,7 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V38.0 Final")
+        st.caption("Ver: V39.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
@@ -483,12 +519,12 @@ def show_main_app():
 
     tab1, tab2 = st.tabs(["📂 上传照片", "📷 现场拍摄"])
     
-    # 🔥 核心修复：使用动态 Key (uploader_key) 来强制重置上传组件
+    # 保留V38修复：动态Key
     with tab1:
         f = st.file_uploader(
             "支持 JPG/PNG", 
             type=["jpg","png","webp"], 
-            key=f"up_file_{st.session_state.uploader_key}", # 动态Key
+            key=f"up_file_{st.session_state.uploader_key}", 
             on_change=clear_camera
         )
         if f: st.session_state.current_image = Image.open(f).convert('RGB')
@@ -497,7 +533,7 @@ def show_main_app():
         c = st.camera_input("点击拍摄", key="cam_file", on_change=clear_upload)
         if c: st.session_state.current_image = Image.open(c).convert('RGB')
 
-    # 🔥 核心修复：点击重置时，调用 reset_all 更新 uploader_key
+    # 保留V38修复：重置更新Key
     if st.button("🗑️ 清空重置 / 换张图", use_container_width=True, on_click=reset_all):
         st.rerun()
 
@@ -513,7 +549,18 @@ def show_main_app():
                     with st.expander("📷 拍摄参数"): st.json(exif)
         
         with c2:
-            # 只有当没有报告时，才显示按钮。或者切换模式时报告被清除，按钮也会回来。
+            # 保留 V37 修复：带缓存的 AI 调用
+            @st.cache_data(show_spinner=False, ttl=3600)
+            def generate_ai_analysis(img_bytes, prompt, model_name):
+                try:
+                    img = Image.open(io.BytesIO(img_bytes))
+                    cfg = genai.types.GenerationConfig(temperature=0.0)
+                    m = genai.GenerativeModel(model_name, system_instruction=prompt)
+                    res = m.generate_content([img, "分析此图。"], generation_config=cfg)
+                    return res.text
+                except Exception as e:
+                    return f"ERROR: {e}"
+
             if not st.session_state.current_report:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：想修出日系感...")
                 
@@ -551,12 +598,9 @@ def show_main_app():
                 st.markdown(f'<div class="result-card">{st.session_state.current_report}</div>', unsafe_allow_html=True)
                 
                 img_b64 = img_to_base64(st.session_state.current_image)
-                # 存历史
-                current_time = datetime.now().strftime("%H:%M")
-                new_record = {"time": current_time, "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
-                
                 if not st.session_state.history or st.session_state.history[-1]['content'] != st.session_state.current_report:
-                    st.session_state.history.append(new_record)
+                    record = {"time": datetime.now().strftime("%H:%M"), "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
+                    st.session_state.history.append(record)
                     if len(st.session_state.history) > 5: st.session_state.history.pop(0)
 
                 btn_c1, btn_c2 = st.columns(2)
@@ -566,7 +610,8 @@ def show_main_app():
                 
                 with btn_c2:
                     if st.button("❤️ 加入收藏", use_container_width=True):
-                        st.session_state.favorites.append(new_record)
+                        record = {"time": datetime.now().strftime("%H:%M"), "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
+                        st.session_state.favorites.append(record)
                         st.toast("已收藏！", icon="⭐")
 
 if __name__ == "__main__":
