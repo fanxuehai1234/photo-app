@@ -23,8 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- 核心：矢量级绿色叶子图标 (SVG Base64) ---
-# 这是一个绝对清晰、加载极快的绿色叶子图标，代码内置，永不丢失
+# SVG 图标
 LEAF_ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRDQUY1MCI+PHBhdGggZD0iTTE3LDhDOCwxMCw1LjksMTYuMTcsMy44MiwyMS4zNEw1LjcxLDIybDEtMi4zQTQuNDksNC40OSwwLDAsMCw4LDIwQzE5LDIwLDIyLDMsMjIsMywyMSw1LDE0LDUuMjUsOSw2LjI1UzIsMTEuNSwyLDEzLjVhNi4yMiw2LjIyLDAsMCwwLDEuNzUsMy43NUM3LDgsMTcsOCwxNyw4WiIvPjwvc3ZnPg=="
 
 st.set_page_config(
@@ -34,27 +33,23 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================= 1. CSS 深度美化 =================
+# ================= 1. CSS 美化 =================
 st.markdown("""
     <style>
-    /* 基础清理 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     div[class^="viewerBadge"] {display: none !important;} 
     
-    /* 手机端间距优化 */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 2rem !important;
     }
     
-    /* 侧边栏强制显示 */
     section[data-testid="stSidebar"] {
         display: block;
     }
     
-    /* 结果卡片 */
     .result-card {
         background-color: #f8f9fa;
         border-left: 5px solid #4CAF50;
@@ -65,47 +60,55 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     
-    /* 按钮样式 */
     .stButton>button {
         font-weight: bold;
         border-radius: 8px;
     }
     
-    /* 登录页文艺金句样式 */
-    .login-quote {
+    /* 试用提示条 */
+    .trial-banner {
+        background-color: #FFF3CD;
+        color: #856404;
+        padding: 10px;
+        border-radius: 5px;
         text-align: center;
-        color: #888;
-        font-family: 'Georgia', serif;
-        font-style: italic;
-        margin-top: 15px;
-        font-size: 16px;
-    }
-    
-    /* 标题图标对齐容器 */
-    .logo-header {
-        display: flex; 
-        align-items: center; 
-        margin-bottom: 20px;
-    }
-    .logo-img {
-        width: 40px; 
-        height: 40px; 
-        margin-right: 12px;
-    }
-    .logo-text {
-        margin: 0; 
-        font-size: 1.8rem; 
-        font-weight: 700;
-        line-height: 1.2;
+        margin-bottom: 15px;
+        border: 1px solid #FFEEBA;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 2. 状态初始化 =================
+# ================= 2. 游客数据管理 =================
+GUEST_FILE = "guest_usage.json"
+MAX_GUEST_USAGE = 3  # 🔴 设定试用次数为 3 次
+
+def load_guest_data():
+    if not os.path.exists(GUEST_FILE):
+        return {}
+    try:
+        with open(GUEST_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_guest_usage(phone):
+    data = load_guest_data()
+    current_usage = data.get(phone, 0)
+    data[phone] = current_usage + 1
+    with open(GUEST_FILE, 'w') as f:
+        json.dump(data, f)
+    return data[phone]
+
+def get_guest_usage(phone):
+    data = load_guest_data()
+    return data.get(phone, 0)
+
+# ================= 3. 状态初始化 =================
 def init_session_state():
     defaults = {
         'logged_in': False,
         'user_phone': None,
+        'user_role': 'guest',
         'expire_date': None,
         'history': [],
         'favorites': [],
@@ -133,7 +136,7 @@ def reset_all():
     if 'up_file' in st.session_state: del st.session_state['up_file']
     st.session_state.current_report = None
 
-# ================= 3. 工具函数 =================
+# ================= 4. 工具函数 =================
 def configure_random_key():
     try:
         keys = st.secrets["API_KEYS"]
@@ -179,68 +182,102 @@ def img_to_base64(image):
         return base64.b64encode(buffered.getvalue()).decode()
     except: return ""
 
-# ================= 4. 登录页 (含叶子图标修复 + 文艺金句) =================
+# ================= 5. 登录页 =================
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     
     with col_poster:
-        st.image("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=1000&auto=format&fit=crop", 
+        st.image("https://images.unsplash.com/photo-1470104240373-0c33a30925e1?q=80&w=1000&auto=format&fit=crop", 
                  use_container_width=True)
-        # ★★★ 新增：文艺金句 ★★★
         st.markdown('<div class="login-quote">“ 光影之处，皆是生活 ”</div>', unsafe_allow_html=True)
 
     with col_login:
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # ★★★ 修复：强制显示叶子图标 (使用 Flexbox 布局) ★★★
         st.markdown(f"""
-        <div class="logo-header">
-            <img src="{LEAF_ICON}" class="logo-img">
-            <h1 class="logo-text">智影</h1>
+        <div class="logo-header" style="display:flex; align-items:center; margin-bottom:20px;">
+            <img src="{LEAF_ICON}" style="width:50px; height:50px; margin-right:15px;">
+            <h1 style="margin:0;">智影</h1>
         </div>
         """, unsafe_allow_html=True)
             
         st.markdown("#### 您的 24小时 AI 摄影私教")
-        st.info("✨ **一键评分** | 📊 **参数直出** | 🎓 **大师指导**")
         
-        with st.container(border=True):
-            st.subheader("🔐 会员登录")
-            phone_input = st.text_input("手机号码", placeholder="请输入手机号", max_chars=11)
-            code_input = st.text_input("激活码 / Key", placeholder="请输入专属 Key", type="password")
-            
-            if st.button("立即登录", type="primary", use_container_width=True):
-                try:
-                    valid_accounts = st.secrets["VALID_ACCOUNTS"]
-                    login_success = False
-                    expire_date_str = ""
-                    for account_str in valid_accounts:
-                        parts = account_str.split(":")
-                        if len(parts) == 3 and phone_input == parts[0].strip() and code_input == parts[1].strip():
-                            exp_date = datetime.strptime(parts[2].strip(), "%Y-%m-%d")
-                            if datetime.now() > exp_date:
-                                st.error(f"❌ 会员已于 {parts[2]} 到期")
-                                return
-                            login_success = True
-                            expire_date_str = parts[2]
-                            break
-                    
-                    if login_success:
-                        st.session_state.logged_in = True
-                        st.session_state.user_phone = phone_input
-                        st.session_state.expire_date = expire_date_str
-                        if 'current_image' in st.session_state: del st.session_state['current_image']
-                        logger.info(f"⭐⭐⭐ [MONITOR] LOGIN SUCCESS | User: {phone_input}")
-                        st.rerun()
-                    else:
-                        st.error("账号或激活码错误")
-                except Exception as e:
-                    st.error(f"配置错误: {e}")
+        login_tab1, login_tab2 = st.tabs(["💎 会员登录", "🎁 游客试用"])
+        
+        # --- Tab 1: 会员 ---
+        with login_tab1:
+            with st.container(border=True):
+                phone_input = st.text_input("手机号码", placeholder="请输入注册手机号", max_chars=11, key="vip_phone")
+                code_input = st.text_input("激活码", placeholder="请输入专属 Key", type="password", key="vip_code")
+                
+                if st.button("会员登录", type="primary", use_container_width=True):
+                    try:
+                        valid_accounts = st.secrets["VALID_ACCOUNTS"]
+                        login_success = False
+                        expire_date_str = ""
+                        for account_str in valid_accounts:
+                            parts = account_str.split(":")
+                            if len(parts) == 3 and phone_input == parts[0].strip() and code_input == parts[1].strip():
+                                exp_date = datetime.strptime(parts[2].strip(), "%Y-%m-%d")
+                                if datetime.now() > exp_date:
+                                    st.error(f"❌ 您的服务已于 {parts[2]} 到期")
+                                    return
+                                login_success = True
+                                expire_date_str = parts[2]
+                                break
+                        
+                        if login_success:
+                            st.session_state.logged_in = True
+                            st.session_state.user_phone = phone_input
+                            st.session_state.user_role = 'vip'
+                            st.session_state.expire_date = expire_date_str
+                            
+                            if 'current_image' in st.session_state: del st.session_state['current_image']
+                            st.session_state.history = []
+                            st.session_state.favorites = []
+                            
+                            logger.info(f"⭐⭐⭐ [MONITOR] VIP LOGIN | User: {phone_input}")
+                            st.rerun()
+                        else:
+                            st.error("账号或激活码错误")
+                    except:
+                        st.error("系统维护中")
 
-        st.warning("💎 **获取激活码 / 续费请联系微信：BayernGomez**")
+        # --- Tab 2: 游客 ---
+        with login_tab2:
+            with st.container(border=True):
+                st.info(f"🎁 新用户免费试用 {MAX_GUEST_USAGE} 次")
+                guest_phone = st.text_input("手机号码 (记录次数)", placeholder="请输入手机号", max_chars=11, key="guest_phone")
+                
+                if st.button("开始试用", use_container_width=True):
+                    if len(guest_phone) != 11:
+                        st.error("请输入正确的 11 位手机号码")
+                    else:
+                        used_count = get_guest_usage(guest_phone)
+                        if used_count >= MAX_GUEST_USAGE:
+                            st.error("❌ 试用次数已耗尽")
+                            # 🔴 更新了微信号
+                            st.warning("请联系微信 **BayernGomez28** 购买正式会员。")
+                        else:
+                            st.session_state.logged_in = True
+                            st.session_state.user_phone = guest_phone
+                            st.session_state.user_role = 'guest'
+                            st.session_state.expire_date = "试用期"
+                            
+                            if 'current_image' in st.session_state: del st.session_state['current_image']
+                            st.session_state.history = []
+                            st.session_state.favorites = []
+                            
+                            logger.info(f"⭐⭐⭐ [MONITOR] GUEST LOGIN | User: {guest_phone}")
+                            st.rerun()
+
+        # 🔴 更新了微信号
+        st.caption("💎 购买会员请联系微信：**BayernGomez28**")
         with st.expander("📲 安装教程"):
             st.markdown("iPhone: Safari分享 -> 添加到主屏幕\nAndroid: Chrome菜单 -> 添加到主屏幕")
 
-# ================= 5. 主程序 =================
+# ================= 6. 主程序 =================
 def show_main_app():
     if not configure_random_key():
         st.stop()
@@ -251,21 +288,25 @@ def show_main_app():
         .result-card {background-color: #1E1E1E; color: #E0E0E0;}
         section[data-testid="stSidebar"] {background-color: #1E1E1E;}
         [data-baseweb="input"] {background-color: #262626; color: white;}
-        /* 深色模式下标题文字变白 */
         .logo-text {color: #E0E0E0 !important;}
         </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
-        # ★★★ 侧边栏 Logo 修复 ★★★
         st.markdown(f"""
-        <div class="logo-header" style="margin-bottom: 10px;">
-            <img src="{LEAF_ICON}" class="logo-img" style="width:30px; height:30px;">
+        <div class="logo-header" style="display:flex; align-items:center; margin-bottom:10px;">
+            <img src="{LEAF_ICON}" style="width:30px; height:30px; margin-right:10px;">
             <h3 style="margin:0; font-size:1.2rem;">用户中心</h3>
         </div>
         """, unsafe_allow_html=True)
         
-        st.info(f"👤 {st.session_state.user_phone}")
-        st.caption(f"有效期: {st.session_state.expire_date}")
+        if st.session_state.user_role == 'vip':
+            st.success(f"💎 正式会员: {st.session_state.user_phone}")
+            st.caption(f"有效期: {st.session_state.expire_date}")
+        else:
+            used = get_guest_usage(st.session_state.user_phone)
+            remain = MAX_GUEST_USAGE - used
+            st.warning(f"🎁 试用访客: {st.session_state.user_phone}")
+            st.progress(used/MAX_GUEST_USAGE, text=f"剩余次数: {remain}/{MAX_GUEST_USAGE}")
         
         st.markdown("---")
         mode_select = st.radio("模式选择:", ["📷 日常快评", "🧐 专业艺术"], index=0)
@@ -311,7 +352,7 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V30.0 Final")
+        st.caption("Ver: V32.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
@@ -360,11 +401,10 @@ def show_main_app():
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
         banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
 
-    # ★★★ 主界面 Logo 修复 ★★★
     st.markdown(f"""
-    <div class="logo-header">
-        <img src="{LEAF_ICON}" class="logo-img">
-        <h1 class="logo-text">智影 | 影像私教</h1>
+    <div class="logo-header" style="display:flex; align-items:center; margin-bottom:20px;">
+        <img src="{LEAF_ICON}" class="logo-img" style="width:50px; height:50px; margin-right:15px;">
+        <h1 style="margin:0;">智影 | 影像私教</h1>
     </div>
     """, unsafe_allow_html=True)
     
@@ -374,28 +414,35 @@ def show_main_app():
     </div>
     """, unsafe_allow_html=True)
 
+    if st.session_state.user_role == 'guest':
+        remain = MAX_GUEST_USAGE - get_guest_usage(st.session_state.user_phone)
+        st.markdown(f"""
+        <div class="trial-banner">
+            🎁 游客试用模式：还剩 <b>{remain}</b> 次机会。满意请联系微信 <b>BayernGomez28</b> 开通会员！
+        </div>
+        """, unsafe_allow_html=True)
+
     tab1, tab2 = st.tabs(["📂 上传照片", "📷 现场拍摄"])
-    active_image = None
     
     with tab1:
         f = st.file_uploader("支持 JPG/PNG", type=["jpg","png","webp"], key="up_file", on_change=clear_camera)
-        if f: active_image = Image.open(f).convert('RGB')
+        if f: st.session_state.current_image = Image.open(f).convert('RGB')
             
     with tab2:
         c = st.camera_input("点击拍摄", key="cam_file", on_change=clear_upload)
-        if c: active_image = Image.open(c).convert('RGB')
+        if c: st.session_state.current_image = Image.open(c).convert('RGB')
 
     if st.button("🗑️ 清空重置 / 换张图", use_container_width=True, on_click=reset_all):
         st.rerun()
 
-    if active_image:
+    if st.session_state.get('current_image'):
         st.divider()
         c1, c2 = st.columns([1, 1.2])
         
         with c1:
-            st.image(active_image, caption="待分析影像", use_container_width=True)
+            st.image(st.session_state.current_image, caption="待分析影像", use_container_width=True)
             if show_exif_info:
-                exif = get_exif_data(active_image)
+                exif = get_exif_data(st.session_state.current_image)
                 if exif:
                     with st.expander("📷 拍摄参数"): st.json(exif)
         
@@ -404,8 +451,19 @@ def show_main_app():
                 user_req = st.text_input("备注 (可选):", placeholder="例如：想修出日系感...")
                 
                 if st.button("🚀 开始评估", type="primary", use_container_width=True):
+                    # === 扣费逻辑 ===
+                    if st.session_state.user_role == 'guest':
+                        current_usage = get_guest_usage(st.session_state.user_phone)
+                        if current_usage >= MAX_GUEST_USAGE:
+                            st.error("❌ 试用次数已用完！")
+                            # 🔴 更新微信号
+                            st.info("请联系微信 **BayernGomez28** 购买正式会员。")
+                            st.stop()
+                        else:
+                            save_guest_usage(st.session_state.user_phone)
+                    
                     with st.status(status_msg, expanded=True) as s:
-                        logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone} | Mode: {mode_select}")
+                        logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone}")
                         
                         generation_config = genai.types.GenerationConfig(temperature=0.1)
                         model = genai.GenerativeModel(real_model, system_instruction=active_prompt)
@@ -413,7 +471,7 @@ def show_main_app():
                         msg = "分析此图。"
                         if user_req: msg += f" 备注：{user_req}"
                         
-                        response = model.generate_content([msg, active_image], generation_config=generation_config)
+                        response = model.generate_content([msg, st.session_state.current_image], generation_config=generation_config)
                         
                         st.session_state.current_report = response.text
                         st.session_state.current_req = user_req
@@ -423,7 +481,7 @@ def show_main_app():
             if st.session_state.current_report:
                 st.markdown(f'<div class="result-card">{st.session_state.current_report}</div>', unsafe_allow_html=True)
                 
-                img_b64 = img_to_base64(active_image)
+                img_b64 = img_to_base64(st.session_state.current_image)
                 if not st.session_state.history or st.session_state.history[-1]['content'] != st.session_state.current_report:
                     record = {"time": datetime.now().strftime("%H:%M"), "mode": mode_select, "content": st.session_state.current_report, "img_base64": img_b64}
                     st.session_state.history.append(record)
