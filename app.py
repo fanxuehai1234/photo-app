@@ -12,6 +12,7 @@ import logging
 import sys
 import json
 import re
+import hashlib  # 👈 新增：用于给图片生成唯一的“指纹”ID
 
 # ================= 0. 核心配置 =================
 warnings.filterwarnings("ignore")
@@ -24,7 +25,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# SVG 图标
+# SVG 图标 (绿色叶子)
 LEAF_ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzRDQUY1MCI+PHBhdGggZD0iTTE3LDhDOCwxMCw1LjksMTYuMTcsMy44MiwyMS4zNEw1LjcxLDIybDEtMi4zQTQuNDksNC40OSwwLDAsMCw4LDIwQzE5LDIwLDIyLDMsMjIsMywyMSw1LDE0LDUuMjUsOSw2LjI1UzIsMTEuNSwyLDEzLjVhNi4yMiw2LjIyLDAsMCwwLDEuNzUsMy43NUM3LDgsMTcsOCwxNyw4WiIvPjwvc3ZnPg=="
 
 st.set_page_config(
@@ -34,9 +35,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================= 1. CSS 美化 =================
+# ================= 1. CSS 深度美化 (修复表格显示问题) =================
 st.markdown("""
     <style>
+    /* 基础清理 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -44,13 +46,14 @@ st.markdown("""
     
     .block-container {
         padding-top: 1rem !important;
-        padding-bottom: 3rem !important;
+        padding-bottom: 2rem !important;
     }
     
     section[data-testid="stSidebar"] {
         display: block;
     }
     
+    /* 结果卡片优化：增加横向滚动，防止表格被截断 */
     .result-card {
         background-color: #f8f9fa;
         border-left: 5px solid #4CAF50;
@@ -59,6 +62,24 @@ st.markdown("""
         margin-top: 10px;
         margin-bottom: 20px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        overflow-x: auto; /* 👈 关键修复：允许左右滑动查看完整表格 */
+    }
+    
+    /* 表格样式强制优化 */
+    .result-card table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10px 0;
+    }
+    .result-card th, .result-card td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+        font-size: 14px;
+    }
+    .result-card th {
+        background-color: #e8f5e9;
+        color: #2E7D32;
     }
     
     .stButton>button {
@@ -80,12 +101,10 @@ st.markdown("""
 
 # ================= 2. 数据与逻辑引擎 =================
 
-# --- A. 手机号正则校验 ---
 def is_valid_phone(phone):
     pattern = r"^1[3-9]\d{9}$"
     return bool(re.match(pattern, phone))
 
-# --- B. 游客数据管理 ---
 GUEST_FILE = "guest_usage.json"
 MAX_GUEST_USAGE = 3
 
@@ -112,7 +131,15 @@ def save_guest_usage(phone):
         json.dump(data, f)
     return data[phone]
 
-# --- C. 智能 Key 管理 ---
+# --- 图片指纹生成 (防重复扣费核心) ---
+def get_image_hash(image):
+    try:
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='JPEG') # 统一格式计算
+        return hashlib.md5(img_byte_arr.getvalue()).hexdigest()
+    except:
+        return str(time.time()) # 兜底
+
 def configure_random_key():
     try:
         keys = st.secrets["API_KEYS"]
@@ -124,7 +151,6 @@ def configure_random_key():
         st.error(f"⚠️ 系统配置错误: {e}")
         return False
 
-# --- D. EXIF ---
 def get_exif_data(image):
     exif_data = {}
     try:
@@ -137,7 +163,6 @@ def get_exif_data(image):
     except: pass
     return exif_data
 
-# --- E. 报告生成 ---
 def create_html_report(text, user_req, img_base64):
     img_tag = f'<img src="data:image/jpeg;base64,{img_base64}" style="max-width:100%; border-radius:10px; margin-bottom:20px;">' if img_base64 else ""
     return f"""
@@ -172,6 +197,7 @@ def init_session_state():
         'font_size': 16,
         'dark_mode': False,
         'current_report': None,
+        'last_img_hash': None, # 👈 新增：记录上一张图的指纹
         'processing': False
     }
     for key, value in defaults.items():
@@ -182,18 +208,19 @@ init_session_state()
 
 def clear_camera():
     if 'cam_file' in st.session_state: del st.session_state['cam_file']
-    st.session_state.current_report = None
-
+    # 切换输入源时，不要清空报告，除非用户点了重置
+    
 def clear_upload():
     if 'up_file' in st.session_state: del st.session_state['up_file']
-    st.session_state.current_report = None
 
 def reset_all():
     if 'cam_file' in st.session_state: del st.session_state['cam_file']
     if 'up_file' in st.session_state: del st.session_state['up_file']
     st.session_state.current_report = None
+    st.session_state.last_img_hash = None # 清空指纹
+    if 'current_image' in st.session_state: del st.session_state['current_image']
 
-# ================= 4. 登录页 (修复版：恢复双栏教程) =================
+# ================= 4. 登录页 =================
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     
@@ -271,7 +298,7 @@ def show_login_page():
                             st.error("❌ 试用次数已用完")
                             st.warning("请联系微信 **BayernGomez28** 购买正式会员。")
                         else:
-                            save_guest_usage(guest_phone) # 立即扣费防止刷
+                            # 注意：登录时不扣费，点击分析时才扣费
                             st.session_state.logged_in = True
                             st.session_state.user_phone = guest_phone
                             st.session_state.user_role = 'guest'
@@ -284,7 +311,6 @@ def show_login_page():
 
         st.caption("💎 购买会员请联系微信：**BayernGomez28**")
         
-        # 🟢 修复：这里恢复了双栏布局
         with st.expander("📲 安装教程 (iPhone / Android)"):
             c1, c2 = st.columns(2)
             with c1:
@@ -298,7 +324,7 @@ def show_login_page():
                 st.markdown("2. 点击右上角菜单")
                 st.markdown("3. 选择 [添加到主屏幕]")
 
-# ================= 5. 主程序 =================
+# ================= 6. 主程序 =================
 def show_main_app():
     if not configure_random_key():
         st.stop()
@@ -310,6 +336,7 @@ def show_main_app():
         section[data-testid="stSidebar"] {background-color: #1E1E1E;}
         [data-baseweb="input"] {background-color: #262626; color: white;}
         .logo-text {color: #E0E0E0 !important;}
+        .result-card th {background-color: #333 !important; color: #fff !important;}
         </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
@@ -373,12 +400,13 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V35.0 Final")
+        st.caption("Ver: V36.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
     if "日常" in mode_select:
         real_model = "gemini-2.0-flash-lite-preview-02-05"
+        # 优化提示词：强制表格格式简洁，防止手机端溢出
         active_prompt = """你是一位亲切的摄影博主“智影”。
 请严格按照 Markdown 格式输出，标题与内容之间空一行。
 # 🌟 综合评分: {分数}/10
@@ -386,7 +414,7 @@ def show_main_app():
 ### 📝 影像笔记
 > {点评}
 
-### 🎨 手机修图参数表 (Wake/iPhone)
+### 🎨 手机修图参数 (Wake/iPhone)
 | 参数 | 数值 | 目的 |
 | :--- | :--- | :--- |
 | ... | ... | ... |
@@ -468,39 +496,45 @@ def show_main_app():
                     with st.expander("📷 拍摄参数"): st.json(exif)
         
         with c2:
-            # === 核心逻辑：带缓存 ===
-            # 定义一个函数来调用AI (利用st.cache_data)
-            @st.cache_data(show_spinner=False, ttl=3600)
-            def generate_ai_analysis(img_bytes, prompt, model_name):
-                try:
-                    img = Image.open(io.BytesIO(img_bytes))
-                    cfg = genai.types.GenerationConfig(temperature=0.0)
-                    m = genai.GenerativeModel(model_name, system_instruction=prompt)
-                    res = m.generate_content([img, "分析此图。"], generation_config=cfg)
-                    return res.text
-                except Exception as e:
-                    return f"ERROR: {e}"
-
             if not st.session_state.current_report:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：想修出日系感...")
                 
                 if st.button("🚀 开始评估", type="primary", use_container_width=True):
-                    with st.status(status_msg, expanded=True) as s:
-                        logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone}")
+                    # === 🟢 核心防刷逻辑：检查图片是否未变 ===
+                    current_img_hash = get_image_hash(st.session_state.current_image)
+                    
+                    # 如果hash一样，说明用户没换图，只是手滑又点了一次
+                    if st.session_state.last_img_hash == current_img_hash and st.session_state.current_report:
+                        st.toast("已显示上次分析结果 (本次不扣费)", icon="✨")
+                        # 已经是显示状态，不需要做任何事
+                    else:
+                        # 确实是新图片，执行扣费检查
+                        if st.session_state.user_role == 'guest':
+                            current_usage = get_guest_usage(st.session_state.user_phone)
+                            if current_usage >= MAX_GUEST_USAGE:
+                                st.error("❌ 试用次数已用完！")
+                                st.info("请联系微信 **BayernGomez28** 购买正式会员。")
+                                st.stop()
+                            else:
+                                save_guest_usage(st.session_state.user_phone)
                         
-                        # 转换图片为字节流以使用缓存
-                        img_byte_arr = io.BytesIO()
-                        st.session_state.current_image.save(img_byte_arr, format='JPEG')
-                        img_bytes = img_byte_arr.getvalue()
-                        
-                        # 调用带缓存的函数
-                        ai_result = generate_ai_analysis(img_bytes, active_prompt, real_model)
-                        
-                        if "ERROR:" in ai_result:
-                            st.error(ai_result)
-                        else:
-                            st.session_state.current_report = ai_result
+                        # 调用 AI
+                        with st.status(status_msg, expanded=True) as s:
+                            logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone}")
+                            
+                            # 强制低温，保证一致性
+                            generation_config = genai.types.GenerationConfig(temperature=0.0)
+                            model = genai.GenerativeModel(real_model, system_instruction=active_prompt)
+                            
+                            msg = "分析此图。"
+                            if user_req: msg += f" 备注：{user_req}"
+                            
+                            response = model.generate_content([msg, st.session_state.current_image], generation_config=generation_config)
+                            
+                            st.session_state.current_report = response.text
                             st.session_state.current_req = user_req
+                            st.session_state.last_img_hash = current_img_hash # 记录本次图片指纹
+                            
                             s.update(label="✅ 分析完成", state="complete", expanded=False)
                             st.rerun()
             
