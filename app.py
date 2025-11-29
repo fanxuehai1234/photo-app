@@ -11,7 +11,7 @@ import base64
 import logging
 import sys
 import json
-import re  # 正则表达式
+import re
 
 # ================= 0. 核心配置 =================
 warnings.filterwarnings("ignore")
@@ -82,11 +82,10 @@ st.markdown("""
 
 # --- A. 手机号正则校验 ---
 def is_valid_phone(phone):
-    # 严格规则：1开头，第二位3-9，共11位数字
     pattern = r"^1[3-9]\d{9}$"
     return bool(re.match(pattern, phone))
 
-# --- B. 游客数据管理 (JSON持久化) ---
+# --- B. 游客数据管理 ---
 GUEST_FILE = "guest_usage.json"
 MAX_GUEST_USAGE = 3
 
@@ -98,7 +97,7 @@ def get_guest_usage(phone):
             return data.get(phone, 0)
     except: return 0
 
-def increment_guest_usage(phone):
+def save_guest_usage(phone):
     data = {}
     if os.path.exists(GUEST_FILE):
         try:
@@ -125,58 +124,7 @@ def configure_random_key():
         st.error(f"⚠️ 系统配置错误: {e}")
         return False
 
-# --- D. AI分析函数 (带缓存：解决同图不同解的问题) ---
-# ttl=3600 表示缓存1小时，hash_funcs让Streamlit能识别图片内容
-@st.cache_data(show_spinner=False, ttl=3600)
-def generate_ai_analysis(img_bytes, prompt, model_name):
-    # 这里通过 img_bytes (二进制数据) 来判断图片是否相同
-    # 如果图片没变，直接返回上次的结果，不再调用 Google API
-    try:
-        image = Image.open(io.BytesIO(img_bytes))
-        
-        # 强制低温 (0.0) 保证结果一致性
-        generation_config = genai.types.GenerationConfig(temperature=0.0)
-        
-        model = genai.GenerativeModel(model_name, system_instruction=prompt)
-        response = model.generate_content(image, generation_config=generation_config)
-        return response.text
-    except Exception as e:
-        return f"ERROR: {str(e)}"
-
-# ================= 3. 状态初始化 =================
-def init_session_state():
-    defaults = {
-        'logged_in': False,
-        'user_phone': None,
-        'user_role': 'guest',
-        'expire_date': None,
-        'history': [],
-        'favorites': [],
-        'font_size': 16,
-        'dark_mode': False,
-        'current_report': None,
-        'processing': False
-    }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-init_session_state()
-
-# 图片互斥清理
-def clear_camera():
-    if 'cam_file' in st.session_state: del st.session_state['cam_file']
-    st.session_state.current_report = None
-
-def clear_upload():
-    if 'up_file' in st.session_state: del st.session_state['up_file']
-    st.session_state.current_report = None
-
-def reset_all():
-    if 'cam_file' in st.session_state: del st.session_state['cam_file']
-    if 'up_file' in st.session_state: del st.session_state['up_file']
-    st.session_state.current_report = None
-
+# --- D. EXIF ---
 def get_exif_data(image):
     exif_data = {}
     try:
@@ -189,6 +137,7 @@ def get_exif_data(image):
     except: pass
     return exif_data
 
+# --- E. 报告生成 ---
 def create_html_report(text, user_req, img_base64):
     img_tag = f'<img src="data:image/jpeg;base64,{img_base64}" style="max-width:100%; border-radius:10px; margin-bottom:20px;">' if img_base64 else ""
     return f"""
@@ -211,7 +160,40 @@ def img_to_base64(image):
         return base64.b64encode(buffered.getvalue()).decode()
     except: return ""
 
-# ================= 4. 登录页 (严控版) =================
+# ================= 3. 状态初始化 =================
+def init_session_state():
+    defaults = {
+        'logged_in': False,
+        'user_phone': None,
+        'user_role': 'guest',
+        'expire_date': None,
+        'history': [],
+        'favorites': [],
+        'font_size': 16,
+        'dark_mode': False,
+        'current_report': None,
+        'processing': False
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+init_session_state()
+
+def clear_camera():
+    if 'cam_file' in st.session_state: del st.session_state['cam_file']
+    st.session_state.current_report = None
+
+def clear_upload():
+    if 'up_file' in st.session_state: del st.session_state['up_file']
+    st.session_state.current_report = None
+
+def reset_all():
+    if 'cam_file' in st.session_state: del st.session_state['cam_file']
+    if 'up_file' in st.session_state: del st.session_state['up_file']
+    st.session_state.current_report = None
+
+# ================= 4. 登录页 (修复版：恢复双栏教程) =================
 def show_login_page():
     col_poster, col_login = st.columns([1.2, 1])
     
@@ -264,7 +246,7 @@ def show_login_page():
                                 st.session_state.user_phone = phone_input
                                 st.session_state.user_role = 'vip'
                                 st.session_state.expire_date = expire_date_str
-                                reset_all() # 清空缓存
+                                reset_all()
                                 st.session_state.history = []
                                 st.session_state.favorites = []
                                 logger.info(f"⭐⭐⭐ [MONITOR] VIP LOGIN | User: {phone_input}")
@@ -274,39 +256,47 @@ def show_login_page():
                         except:
                             st.error("系统维护中")
 
-        # --- 游客登录 (严控逻辑) ---
+        # --- 游客登录 ---
         with login_tab2:
             with st.container(border=True):
                 st.info(f"🎁 新用户免费试用 {MAX_GUEST_USAGE} 次")
                 guest_phone = st.text_input("手机号码", placeholder="请输入手机号", max_chars=11, key="guest_phone")
                 
                 if st.button("开始试用", use_container_width=True):
-                    # 1. 校验手机号格式
                     if not is_valid_phone(guest_phone):
                         st.error("请输入有效的 11 位手机号码")
                     else:
-                        # 2. 立即查库 (防止退出重登)
                         used_count = get_guest_usage(guest_phone)
                         if used_count >= MAX_GUEST_USAGE:
-                            st.error("❌ 您的试用次数已全部用完！")
-                            st.warning("请联系微信 **BayernGomez28** 开通正式会员。")
+                            st.error("❌ 试用次数已用完")
+                            st.warning("请联系微信 **BayernGomez28** 购买正式会员。")
                         else:
-                            # 允许进入
+                            save_guest_usage(guest_phone) # 立即扣费防止刷
                             st.session_state.logged_in = True
                             st.session_state.user_phone = guest_phone
                             st.session_state.user_role = 'guest'
                             st.session_state.expire_date = "试用期"
-                            
-                            reset_all() # 清空缓存
+                            reset_all()
                             st.session_state.history = []
                             st.session_state.favorites = []
-                            
                             logger.info(f"⭐⭐⭐ [MONITOR] GUEST LOGIN | User: {guest_phone}")
                             st.rerun()
 
         st.caption("💎 购买会员请联系微信：**BayernGomez28**")
-        with st.expander("📲 安装教程"):
-            st.markdown("iPhone: Safari分享 -> 添加到主屏幕\nAndroid: Chrome菜单 -> 添加到主屏幕")
+        
+        # 🟢 修复：这里恢复了双栏布局
+        with st.expander("📲 安装教程 (iPhone / Android)"):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**🍎 iPhone / iPad**")
+                st.markdown("1. 使用 Safari 打开")
+                st.markdown("2. 点击底部 [分享] 图标")
+                st.markdown("3. 选择 [添加到主屏幕]")
+            with c2:
+                st.markdown("**🤖 Android 安卓**")
+                st.markdown("1. 推荐 Chrome / Edge")
+                st.markdown("2. 点击右上角菜单")
+                st.markdown("3. 选择 [添加到主屏幕]")
 
 # ================= 5. 主程序 =================
 def show_main_app():
@@ -336,12 +326,8 @@ def show_main_app():
         else:
             used = get_guest_usage(st.session_state.user_phone)
             remain = MAX_GUEST_USAGE - used
-            # 这里的剩余次数显示可能不是实时的(需要刷新)，但不影响实际拦截
             st.warning(f"🎁 试用访客: {st.session_state.user_phone}")
-            if remain > 0:
-                st.progress(used/MAX_GUEST_USAGE, text=f"剩余次数: {remain}/{MAX_GUEST_USAGE}")
-            else:
-                st.error("次数已用完")
+            st.progress(used/MAX_GUEST_USAGE, text=f"剩余次数: {remain}/{MAX_GUEST_USAGE}")
         
         st.markdown("---")
         mode_select = st.radio("模式选择:", ["📷 日常快评", "🧐 专业艺术"], index=0)
@@ -387,7 +373,7 @@ def show_main_app():
             st.rerun()
             
         st.markdown("---")
-        st.caption("Ver: V34.0 Stable")
+        st.caption("Ver: V35.0 Final")
 
     st.markdown(f"<style>.stMarkdown p, .stMarkdown li {{font-size: {font_size}px !important; line-height: 1.6;}}</style>", unsafe_allow_html=True)
 
@@ -482,36 +468,38 @@ def show_main_app():
                     with st.expander("📷 拍摄参数"): st.json(exif)
         
         with c2:
+            # === 核心逻辑：带缓存 ===
+            # 定义一个函数来调用AI (利用st.cache_data)
+            @st.cache_data(show_spinner=False, ttl=3600)
+            def generate_ai_analysis(img_bytes, prompt, model_name):
+                try:
+                    img = Image.open(io.BytesIO(img_bytes))
+                    cfg = genai.types.GenerationConfig(temperature=0.0)
+                    m = genai.GenerativeModel(model_name, system_instruction=prompt)
+                    res = m.generate_content([img, "分析此图。"], generation_config=cfg)
+                    return res.text
+                except Exception as e:
+                    return f"ERROR: {e}"
+
             if not st.session_state.current_report:
                 user_req = st.text_input("备注 (可选):", placeholder="例如：想修出日系感...")
                 
                 if st.button("🚀 开始评估", type="primary", use_container_width=True):
-                    # === 游客拦截逻辑 (最后一道防线) ===
-                    if st.session_state.user_role == 'guest':
-                        current_usage = get_guest_usage(st.session_state.user_phone)
-                        if current_usage >= MAX_GUEST_USAGE:
-                            st.error("❌ 试用次数已用完！")
-                            st.warning("您的试用额度已耗尽，请联系微信 **BayernGomez28** 开通正式会员。")
-                            st.stop() # 停止执行后续代码
-                        else:
-                            # 扣费
-                            save_guest_usage(st.session_state.user_phone)
-                    
                     with st.status(status_msg, expanded=True) as s:
                         logger.info(f"⭐⭐⭐ [MONITOR] ACTION | User: {st.session_state.user_phone}")
                         
-                        # 把图片转为字节流，作为缓存的 Key
+                        # 转换图片为字节流以使用缓存
                         img_byte_arr = io.BytesIO()
                         st.session_state.current_image.save(img_byte_arr, format='JPEG')
                         img_bytes = img_byte_arr.getvalue()
                         
-                        # 调用缓存函数
-                        ai_text = generate_ai_analysis(img_bytes, active_prompt, real_model)
+                        # 调用带缓存的函数
+                        ai_result = generate_ai_analysis(img_bytes, active_prompt, real_model)
                         
-                        if "ERROR:" in ai_text:
-                            st.error(ai_text)
+                        if "ERROR:" in ai_result:
+                            st.error(ai_result)
                         else:
-                            st.session_state.current_report = ai_text
+                            st.session_state.current_report = ai_result
                             st.session_state.current_req = user_req
                             s.update(label="✅ 分析完成", state="complete", expanded=False)
                             st.rerun()
