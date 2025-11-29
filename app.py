@@ -63,7 +63,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================= 1. CSS 深度美化 =================
+# ================= 1. CSS 美化 =================
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -73,7 +73,7 @@ st.markdown("""
     
     .block-container {
         padding-top: 1rem !important;
-        padding-bottom: 3rem !important;
+        padding-bottom: 2rem !important;
     }
     
     section[data-testid="stSidebar"] {
@@ -326,7 +326,7 @@ def show_login_page():
     with col_login:
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # 🔴 修复：叶子图标已加回 (Base64)
+        # 🔴 修复：这里强制显示叶子图标
         st.markdown(f"""
         <div style="display:flex; align-items:center; margin-bottom:20px;">
             <img src="{LEAF_ICON_B64}" style="width:50px; height:50px; margin-right:15px;">
@@ -574,6 +574,7 @@ def show_main_app():
 | 模块 | 参数项 | 推荐数值 | 专业解析 |
 | :--- | :--- | :--- | :--- |
 | ... | ... | ... | ... |
+*(请包含曲线、HSL、分离色调等高级参数)*
 
 ### 🎓 大师进阶课
 ...
@@ -584,7 +585,6 @@ def show_main_app():
         banner_text = "专业创作 | 适用：单反微单、商业修图、作品集"
         banner_bg = "#e3f2fd" if not st.session_state.dark_mode else "#0d47a1"
 
-    # 🔴 修复：主页 Logo
     st.markdown(f"""
     <div class="logo-header" style="display:flex; align-items:center; margin-bottom:20px;">
         <img src="{LEAF_ICON_B64}" style="width:50px; height:50px; margin-right:15px;">
@@ -602,7 +602,8 @@ def show_main_app():
         remain = MAX_GUEST_USAGE - get_guest_usage(st.session_state.user_phone)
         st.markdown(f"""
         <div class="trial-banner">
-            🎁 游客试用模式：还剩 <b>{remain}</b> 次机会。满意请联系微信 <b>BayernGomez28</b> 开通会员！
+            🎁 游客模式：总剩余 <b>{remain}</b> 次 (专业模式仅 1 次) <br> 
+            满意请联系微信 <b>BayernGomez28</b> 开通会员！
         </div>
         """, unsafe_allow_html=True)
 
